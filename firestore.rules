@@ -156,7 +156,7 @@ service cloud.firestore {
       }
 
       match /rentPayments/{paymentId} {
-        allow read, create: if isActiveRoomMember(roomId) || isLandlordForRoom(roomId);
+        allow read, create: if isActiveRoomMember(roomId);
         allow update, delete: if false;
       }
 
@@ -227,7 +227,7 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     match /properties/{propertyId} {
       allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
-      allow read, update: if isLandlordOwner(propertyId);
+      allow read, update: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
       allow delete: if false;
 
       match /floors/{floorId} {

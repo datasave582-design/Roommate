@@ -1,15 +1,18 @@
 <!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Makan Malik — The Roommate</title><link rel="manifest" href="../manifest.json"><link rel="stylesheet" href="../css/style.css"></head><body>
 <div id="loader" class="center-loader"><div class="dim-spinner"></div></div>
 <div id="app" class="app hidden">
-<header class="app-header"><div><div class="greet">Makan Malik</div><div class="room-name" id="welcome">Property Dashboard</div></div><button id="logoutBtn" class="icon-btn" title="Logout">↪</button></header>
+<header class="app-header"><div><div class="greet">Makan Malik</div><div class="room-name" id="welcome">Building Manager</div></div><button id="logoutBtn" class="icon-btn" title="Logout">↪</button></header>
 <main class="app-body">
 <section id="dashboardView">
-<div class="stat-grid"><div class="stat-card"><div class="label">Properties</div><div class="value" id="statProperties">0</div></div><div class="stat-card"><div class="label">Rooms</div><div class="value" id="statRooms">0</div></div><div class="stat-card"><div class="label">Occupied</div><div class="value" id="statOccupied">0</div></div><div class="stat-card"><div class="label">Monthly Rent</div><div class="value" id="statRent">₹0</div></div></div>
-<div class="row" style="margin:18px 0 10px"><h3 class="section-title" style="margin:0">My Properties</h3><button id="addPropertyBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">+ Property</button></div>
-<div id="propertyList"></div>
+<div class="card" style="margin-bottom:16px;border:1px solid var(--border);"><div class="row"><div><div class="section-title" style="margin:0">🔗 Your Makan Malik Code</div><div class="person-meta" style="margin-top:4px">Room Admin uses this code to request connection. You approve each Admin.</div></div><div id="landlordCode" class="pill pill-blue" style="font-size:1rem;letter-spacing:2px">—</div></div></div>
+<div class="card" id="adminRequestsCard" style="margin-bottom:16px;display:none;border:1px solid var(--border);"><div class="section-title" style="margin:0 0 10px">🔔 Room Admin Approval Requests</div><div id="adminRequestsList"></div></div>
+<div class="stat-grid"><div class="stat-card"><div class="label">Buildings</div><div class="value" id="statBuildings">0</div></div><div class="stat-card"><div class="label">Connected Admins</div><div class="value" id="statAdmins">0</div></div></div>
+<div class="row" style="margin:18px 0 10px"><h3 class="section-title" style="margin:0">🏢 My Buildings</h3><button id="addBuildingBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">+ Building</button></div>
+<div id="buildingList"></div>
+<div class="row" style="margin:24px 0 10px"><h3 class="section-title" style="margin:0">👨‍💼 Connected Room Admins</h3><button id="broadcastBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">📢 Send Notice</button></div>
+<div class="person-meta" style="margin-bottom:10px">Room Admin और Roommate की private details यहाँ दिखाई नहीं देतीं। आप सिर्फ building assignment और notifications manage कर सकते हैं.</div>
+<div id="adminList"></div>
 </section>
-<section id="propertyView" class="hidden"><button id="backBtn" class="btn btn-outline" style="width:auto;margin-bottom:14px">← Properties</button><div class="card"><div class="row"><div><h2 id="propertyTitle">Property</h2><div id="propertyMeta" class="person-meta"></div></div><button id="addRoomBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">+ Room</button></div></div><div id="roomList"></div></section>
 </main><nav class="bottom-nav"><button class="nav-item active" id="homeNav"><span class="nav-icon">🏠</span>Home</button><button class="nav-item" id="noticeNav"><span class="nav-icon">📢</span>Notices</button><button class="nav-item" id="profileNav"><span class="nav-icon">👤</span>Profile</button></nav></div>
 <div id="modal" class="overlay center hidden"><div class="sheet"><div class="row"><div class="sheet-title" id="modalTitle">Add</div><button id="closeModal" class="icon-btn">×</button></div><div id="modalBody"></div></div></div>
-<div id="toast" class="toast hidden"></div>
-<script type="module" src="dashboard.js"></script></body></html>
+<div id="toast" class="toast hidden"></div><script type="module" src="dashboard.js"></script></body></html>

@@ -6,6 +6,7 @@ import {
 } from "../js/common.js";
 import {
   DEFAULT_CATEGORIES, createRoom, getRoomById, listenRoom,
+  requestLandlordConnection, listenMyLandlordRequest, attachLandlordToRoom,
   listenMembers, listenPendingRequests, approveJoinRequest, rejectJoinRequest, setMemberStatus,
   listenCategories, addCustomCategory,
   addExpense, updateExpense, archiveExpense, deleteExpense, listenExpenses,
@@ -16,7 +17,7 @@ import {
 
 const $ = (id) => document.getElementById(id);
 registerServiceWorker(new URL("../", import.meta.url).href);
-let currentUser = null, roomId = null, roomData = null;
+let currentUser = null, currentProfile = null, roomId = null, roomData = null;
 let members = [], categories = [...DEFAULT_CATEGORIES], expenses = [], payments = [], settlements = [];
 let selectedMonth = monthKey();
 
@@ -24,12 +25,27 @@ requireAuth({
   expectedRole: "roomAdmin",
   onReady: async (user, profile) => {
     currentUser = user;
+    currentProfile = profile;
     $("loader").classList.add("hidden");
     try {
       const room = profile?.roomId ? await getRoomById(profile.roomId) : null;
+      listenMyLandlordRequest(user.uid, (req) => {
+        if (req?.status === "approved" && currentProfile?.landlordConnectionStatus !== "approved") {
+          location.reload();
+          return;
+        }
+        renderLandlordConnection(req, room);
+      });
       if (!room) {
         $("createRoomOverlay").classList.remove("hidden");
+        renderLandlordConnection(null, null);
       } else {
+        if (profile?.landlordUid && !room.landlordUid) {
+          try { await attachLandlordToRoom(room.id, user.uid, profile.landlordUid); room.landlordUid = profile.landlordUid; } catch (e) { console.error(e); }
+        }
+        if (room.landlordUid) $("landlordBadge").textContent = "🏠 Makan Malik connected";
+        else $("landlordBadge").textContent = "🏠 Connect Makan Malik";
+        $("landlordBadge").style.cursor = room.landlordUid ? "default" : "pointer";
         bootRoom(room.id);
       }
     } catch (err) {
@@ -40,6 +56,41 @@ requireAuth({
       </div>`;
     }
   }
+});
+
+function renderLandlordConnection(req, room) {
+  const connected = currentProfile?.landlordConnectionStatus === "approved" && currentProfile?.landlordUid;
+  if (connected) {
+    $("landlordConnectStatus").innerHTML = "✅ <b>Makan Malik approved.</b> You can create/manage the room.";
+    if (!room) $("createRoomSection").classList.remove("hidden");
+    else $("createRoomSection").classList.add("hidden");
+    return;
+  }
+  $("createRoomSection").classList.add("hidden");
+  if (req?.status === "pending") {
+    $("landlordConnectStatus").innerHTML = "⏳ Approval request sent. Waiting for Makan Malik.";
+  } else if (req?.status === "rejected") {
+    $("landlordConnectStatus").innerHTML = "❌ Request rejected. You can send another request with the correct code.";
+  } else {
+    $("landlordConnectStatus").textContent = "No Makan Malik approval yet.";
+  }
+}
+
+$("landlordBadge").addEventListener("click", () => {
+  if (!roomId || !roomData?.landlordUid) {
+    $("createRoomOverlay").classList.remove("hidden");
+    renderLandlordConnection(null, roomData);
+  }
+});
+
+$("connectLandlordForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  await withLoading($("connectLandlordBtn"), async () => {
+    try {
+      await requestLandlordConnection(currentUser.uid, $("landlordCodeInput").value.trim());
+      showToast("Request sent to Makan Malik.");
+    } catch (err) { showToast(friendlyError(err)); }
+  })();
 });
 
 $("createRoomForm").addEventListener("submit", async (e) => {
@@ -53,7 +104,8 @@ $("createRoomForm").addEventListener("submit", async (e) => {
         city: $("crCity").value.trim(),
         rent: rupeesToPaise($("crRent").value || 0),
         dueDate: $("crDueDate").value ? Number($("crDueDate").value) : null,
-        description: $("crDesc").value.trim()
+        description: $("crDesc").value.trim(),
+        landlordUid: currentProfile?.landlordUid || null
       });
       $("createRoomOverlay").classList.add("hidden");
       bootRoom(id);
@@ -73,6 +125,7 @@ function bootRoom(id) {
     if (!room) return;
     $("roomNameText").textContent = room.name;
     $("roomCodeText").textContent = room.code;
+    $("landlordBadge").textContent = room.landlordUid ? "🏠 Makan Malik connected" : "🏠 Makan Malik not connected";
     const h = new Date().getHours();
     $("greetText").textContent = (h < 12 ? "Good Morning" : h < 17 ? "Good Afternoon" : "Good Evening") + ", " + (auth.currentUser.displayName || "Admin") + " 👋";
   });

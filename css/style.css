@@ -143,3 +143,5 @@ img{max-width:100%;display:block;}
 .role-card{position:relative;}
 .role-card:active{transform:scale(.99);}
 @media(max-width:420px){.landing{padding-top:38px}.landing-logo{font-size:1.55rem}.landing-tag{margin-bottom:28px}.role-card{padding:18px}.auth-card{padding:26px 20px}}
+
+.danger-text{color:#c62828 !important;}

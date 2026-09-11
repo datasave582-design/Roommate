@@ -129,6 +129,18 @@ export async function requestJoinRoom(uid, code) {
   return ref.id;
 }
 
+export async function cancelJoinRequest(requestId, uid) {
+  if (!requestId || !uid) throw { code: "invalid-argument", message: "Invalid join request." };
+  const ref = doc(db, "joinRequests", requestId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw { code: "not-found", message: "Join request not found." };
+  const data = snap.data();
+  if (data.uid !== uid || data.status !== "pending") {
+    throw { code: "permission-denied", message: "This join request can no longer be cancelled." };
+  }
+  await deleteDoc(ref);
+}
+
 export function listenPendingRequests(roomId, cb) {
   const q = query(collection(db, "joinRequests"), where("roomId", "==", roomId), where("status", "==", "pending"));
   return onSnapshot(q, async (snap) => {

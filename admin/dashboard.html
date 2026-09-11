@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Room Admin — The Roommate</title>
+<link rel="manifest" href="../manifest.json">
+<meta name="theme-color" content="#0F2A47">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div id="loader" class="center-loader"><div class="dim-spinner"></div></div>
+
+<!-- ===== Create Room (shown only if this admin has no room yet) ===== -->
+<div id="createRoomOverlay" class="overlay center hidden">
+  <div class="sheet">
+    <div class="sheet-title">➕ Create Your Room</div>
+    <form id="createRoomForm">
+      <div class="field"><label>Room Name</label><input type="text" id="crName" required placeholder="e.g. Sunrise Flat"></div>
+      <div class="field"><label>Room / Flat Number</label><input type="text" id="crFlat" required></div>
+      <div class="field"><label>Address</label><input type="text" id="crAddress" required></div>
+      <div class="field"><label>City</label><input type="text" id="crCity" required></div>
+      <div class="field"><label>Monthly Rent (₹)</label><input type="number" id="crRent" min="0" step="1"></div>
+      <div class="field"><label>Rent Due Date (day of month)</label><input type="number" id="crDueDate" min="1" max="31"></div>
+      <div class="field"><label>Description</label><textarea id="crDesc" rows="2"></textarea></div>
+      <button type="submit" id="crBtn" class="btn btn-primary">Create Room</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== App shell ===== -->
+<div id="app" class="app hidden">
+  <div class="app-header">
+    <div><div class="greet" id="greetText">Good Morning 👋</div><div class="room-name" id="roomNameText">—</div></div>
+    <div style="display:flex;gap:10px;">
+      <button class="icon-btn" id="notifBtn">🔔<span id="notifDot" class="badge-dot hidden"></span></button>
+      <button class="icon-btn" id="logoutBtn">⏻</button>
+    </div>
+  </div>
+
+  <div class="app-body">
+    <!-- ---- HOME ---- -->
+    <section id="tab-home">
+      <div class="row" style="margin-bottom:14px;">
+        <div style="font-size:0.9rem;color:var(--text-dim);" id="monthLabelText"></div>
+        <select id="monthSelect" style="border:1.5px solid var(--border);border-radius:10px;padding:6px 10px;background:#fff;"></select>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="label">💰 Total Expenses</div><div class="value" id="statExpenses">₹0</div></div>
+        <div class="stat-card"><div class="label">👥 Roommates</div><div class="value" id="statMembers">0</div></div>
+        <div class="stat-card"><div class="label">💳 Total Paid</div><div class="value" id="statPaid">₹0</div></div>
+        <div class="stat-card"><div class="label">⚠️ Pending</div><div class="value" id="statPending">₹0</div></div>
+      </div>
+      <div class="section-title">Who Owes What</div>
+      <div id="whoOwesList" class="card"></div>
+      <div class="section-title">Recent Expenses</div>
+      <div id="recentExpenses" class="card"></div>
+    </section>
+
+    <!-- ---- EXPENSES ---- -->
+    <section id="tab-expenses" class="hidden">
+      <div class="row" style="margin-bottom:12px;gap:8px;">
+        <select id="expMonthSelect" style="flex:1;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff;"></select>
+        <select id="expSort" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff;">
+          <option value="newest">Newest</option><option value="oldest">Oldest</option>
+          <option value="highest">Highest</option><option value="lowest">Lowest</option>
+        </select>
+      </div>
+      <div class="chip-group" id="expCategoryFilter" style="margin-bottom:14px;"></div>
+      <div id="expensesList" class="card"></div>
+    </section>
+
+    <!-- ---- ROOMMATES ---- -->
+    <section id="tab-roommates" class="hidden">
+      <div class="row" style="margin-bottom:6px;"><h3>Room Code</h3></div>
+      <div class="card row" style="margin-bottom:18px;">
+        <div style="font-size:1.4rem;font-weight:700;letter-spacing:1px;" id="roomCodeText">—</div>
+        <button class="btn-text" id="copyCodeBtn">Copy</button>
+      </div>
+      <div id="joinRequestsWrap"></div>
+      <div class="section-title">Members</div>
+      <div id="membersList" class="card"></div>
+    </section>
+
+    <!-- ---- BALANCE / SETTLEMENTS ---- -->
+    <section id="tab-balance" class="hidden">
+      <div class="section-title" style="margin-top:0;">Balances</div>
+      <div id="balanceList" class="card"></div>
+      <div class="section-title">💸 Suggested Settlements</div>
+      <div id="settlementsList" class="card"></div>
+      <div class="section-title">History</div>
+      <div id="settlementHistory" class="card"></div>
+    </section>
+  </div>
+
+  <button class="fab" id="fabAdd">+</button>
+
+  <div class="bottom-nav">
+    <div class="nav-item active" data-tab="home"><div class="nav-icon">🏠</div>Home</div>
+    <div class="nav-item" data-tab="expenses"><div class="nav-icon">📋</div>Expenses</div>
+    <div class="nav-item" data-tab="add" id="navAdd"><div class="nav-icon">➕</div>Add</div>
+    <div class="nav-item" data-tab="balance"><div class="nav-icon">💰</div>Balance</div>
+    <div class="nav-item" data-tab="roommates"><div class="nav-icon">⚙️</div>More</div>
+  </div>
+</div>
+
+<!-- ===== Add Expense Sheet ===== -->
+<div id="expenseOverlay" class="overlay hidden">
+  <div class="sheet">
+    <div class="sheet-title">➕ Add Expense</div>
+    <form id="expenseForm">
+      <div class="field"><label>Expense Title</label><input type="text" id="exTitle" required></div>
+      <div class="field"><label>Amount (₹)</label><input type="number" id="exAmount" min="0.01" step="0.01" required></div>
+      <div class="field"><label>Category</label><div class="chip-group" id="exCategoryChips"></div></div>
+      <div class="field"><label>Paid By</label><select id="exPaidBy" required></select></div>
+      <div class="field"><label>Date</label><input type="date" id="exDate" required></div>
+      <div class="field"><label>Expense Type</label>
+        <div class="chip-group">
+          <div class="chip active" data-type="shared">Shared Expense</div>
+          <div class="chip" data-type="personal">Personal Expense</div>
+        </div>
+      </div>
+      <div class="field" id="personalOwnerField" style="display:none;">
+        <label>Belongs To</label><select id="exPersonalOwner"></select>
+      </div>
+      <div class="field" id="splitTypeField">
+        <label>Split Type</label>
+        <div class="chip-group">
+          <div class="chip active" data-split="equal">Equal Split</div>
+          <div class="chip" data-split="custom">Custom Split</div>
+        </div>
+      </div>
+      <div class="field" id="participantsField">
+        <label>Participants &amp; Split</label>
+        <div id="splitRows"></div>
+        <div id="splitTotalNote" style="font-size:0.78rem;color:var(--text-dim);margin-top:6px;"></div>
+      </div>
+      <div class="field"><label>Note (optional)</label><textarea id="exNote" rows="2"></textarea></div>
+      <button type="submit" id="exSubmitBtn" class="btn btn-primary">Save Expense</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== Add Payment Sheet ===== -->
+<div id="paymentOverlay" class="overlay hidden">
+  <div class="sheet">
+    <div class="sheet-title">💳 Record Payment</div>
+    <form id="paymentForm">
+      <div class="field"><label>Paid By</label><select id="payPaidBy" required></select></div>
+      <div class="field"><label>Amount (₹)</label><input type="number" id="payAmount" min="0.01" step="0.01" required></div>
+      <div class="field"><label>Date</label><input type="date" id="payDate" required></div>
+      <div class="field"><label>Payment Method</label>
+        <div class="chip-group" id="payMethodChips">
+          <div class="chip active" data-method="Cash">Cash</div>
+          <div class="chip" data-method="UPI">UPI</div>
+          <div class="chip" data-method="Bank">Bank</div>
+          <div class="chip" data-method="Other">Other</div>
+        </div>
+      </div>
+      <div class="field"><label>Reference (optional)</label><input type="text" id="payRef"></div>
+      <div class="field"><label>Note (optional)</label><textarea id="payNote" rows="2"></textarea></div>
+      <button type="submit" id="paySubmitBtn" class="btn btn-primary">Save Payment</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== Add-choice sheet (from FAB) ===== -->
+<div id="addChoiceOverlay" class="overlay hidden">
+  <div class="sheet">
+    <div class="sheet-title">What do you want to add?</div>
+    <button class="btn btn-outline" id="choiceExpense" style="margin-bottom:10px;">➕ Add Expense</button>
+    <button class="btn btn-outline" id="choicePayment">💳 Record Payment</button>
+  </div>
+</div>
+
+<!-- ===== Notifications ===== -->
+<div id="notifOverlay" class="overlay hidden">
+  <div class="sheet">
+    <div class="row" style="margin-bottom:14px;"><div class="sheet-title" style="margin:0;">🔔 Notifications</div><button class="btn-text" id="markAllReadBtn">Mark all read</button></div>
+    <div id="notifList"></div>
+  </div>
+</div>
+
+<!-- Generic confirm modal -->
+<div id="confirmOverlay" class="overlay center hidden">
+  <div class="sheet" style="max-width:340px;">
+    <div class="sheet-title" id="confirmTitle">Are you sure?</div>
+    <p id="confirmMsg" style="color:var(--text-dim);font-size:0.88rem;margin-bottom:18px;"></p>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-outline" id="confirmCancel">Cancel</button>
+      <button class="btn btn-danger" id="confirmOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="dashboard.js"></script>
+</body>
+</html>

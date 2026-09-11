@@ -2,7 +2,7 @@ import { auth, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser } from "../js/auth.js";
 import {
   formatMoney, rupeesToPaise, showToast, friendlyError, withLoading,
-  escapeHtml, formatDate, monthKey, monthLabel, dateInputToDate, dateToInputValue, registerServiceWorker
+  escapeHtml, formatDate, monthKey, monthLabel
 } from "../js/common.js";
 import {
   DEFAULT_CATEGORIES, createRoom, getRoomById, listenRoom,
@@ -15,7 +15,6 @@ import {
 } from "../js/room-data.js";
 
 const $ = (id) => document.getElementById(id);
-registerServiceWorker(new URL("../", import.meta.url).href);
 let currentUser = null, roomId = null, roomData = null;
 let members = [], categories = [...DEFAULT_CATEGORIES], expenses = [], payments = [], settlements = [];
 let selectedMonth = monthKey();
@@ -389,7 +388,8 @@ function openExpenseForm(existing = null) {
     $("exTitle").value = existing.title || "";
     $("exAmount").value = (existing.amountPaise / 100).toString();
     $("exPaidBy").value = existing.paidBy || "";
-    $("exDate").value = dateToInputValue(existing.date);
+    const d = existing.date?.toDate ? existing.date.toDate() : new Date(existing.date);
+    $("exDate").value = d.toISOString().slice(0, 10);
     $("exNote").value = existing.note || "";
     $("exCategoryChips").querySelectorAll(".chip[data-cat]").forEach(chip => {
       chip.classList.toggle("active", chip.dataset.cat === existing.category);
@@ -409,7 +409,7 @@ function openExpenseForm(existing = null) {
     }
     updateSplitPreview();
   } else {
-    $("exDate").value = dateToInputValue(new Date());
+    $("exDate").value = new Date().toISOString().slice(0, 10);
   }
   $("expenseOverlay").classList.remove("hidden");
 }
@@ -423,7 +423,7 @@ $("expenseForm").addEventListener("submit", async (e) => {
       const amountPaise = rupeesToPaise($("exAmount").value);
       const category = $("exCategoryChips").querySelector(".chip.active")?.dataset.cat || "Other";
       const paidBy = $("exPaidBy").value;
-      const dateVal = dateInputToDate($("exDate").value);
+      const dateVal = new Date($("exDate").value);
       if (!title) return showToast("Please enter a title.");
       if (!amountPaise || amountPaise <= 0) return showToast("Please enter a valid amount.");
 
@@ -471,7 +471,7 @@ $("expenseForm").addEventListener("submit", async (e) => {
 // ================= PAYMENT FORM =================
 function openPaymentForm() {
   $("paymentForm").reset();
-  $("payDate").value = dateToInputValue(new Date());
+  $("payDate").value = new Date().toISOString().slice(0, 10);
   document.querySelectorAll('#payMethodChips .chip').forEach(c => c.classList.toggle("active", c.dataset.method === "Cash"));
   $("paymentOverlay").classList.remove("hidden");
 }
@@ -485,7 +485,7 @@ $("paymentForm").addEventListener("submit", async (e) => {
     try {
       const amountPaise = rupeesToPaise($("payAmount").value);
       if (!amountPaise || amountPaise <= 0) return showToast("Please enter a valid amount.");
-      const dateVal = dateInputToDate($("payDate").value);
+      const dateVal = new Date($("payDate").value);
       await addPayment(roomId, currentUser.uid, {
         paidBy: $("payPaidBy").value,
         amountPaise,

@@ -1,6 +1,6 @@
 import { auth, db, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser } from "../js/auth.js";
-import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import { ensureLandlordCode, listenLandlordRequests, approveLandlordRequest, rejectLandlordRequest, listenLandlordConnections, assignLandlordAdminBuilding, sendLandlordNotification } from "../js/room-data.js";
 
 const $=id=>document.getElementById(id); let me=null, buildings=[], connections=[];
@@ -15,6 +15,8 @@ async function loadConnections(){
 }
 function renderRequests(reqs){
   const card=$("adminRequestsCard");
+  $("requestBadge").textContent=reqs.length;
+  $("noRequests").style.display=reqs.length?"none":"block";
   if(!reqs.length){card.style.display="none";$("adminRequestsList").innerHTML="";return;}
   card.style.display="block";
   $("adminRequestsList").innerHTML=reqs.map(r=>`<div class="card" style="box-shadow:none;border:1px solid var(--border);margin-bottom:8px"><div class="row"><div><div class="person-name">Room Admin Request</div><div class="person-meta">A Room Admin wants to connect with your building account.</div></div><div style="display:flex;gap:8px"><button class="btn btn-outline approveAdmin" data-id="${esc(r.id)}" data-uid="${esc(r.requestedBy)}" style="width:auto;padding:8px 12px">Approve</button><button class="btn btn-text rejectAdmin" data-id="${esc(r.id)}" style="width:auto;padding:8px 12px">Reject</button></div></div></div>`).join("");
@@ -23,21 +25,24 @@ function renderRequests(reqs){
 }
 
 async function loadBuildings(){
-  const q=query(collection(db,"properties"),where("ownerUid","==",me.uid),orderBy("createdAt","desc"));
-  const s=await getDocs(q); buildings=s.docs.map(d=>({id:d.id,...d.data()})); renderBuildings(); renderConnections();
+  const q=query(collection(db,"properties"),where("ownerUid","==",me.uid));
+  const s=await getDocs(q); buildings=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>((b.createdAt?.seconds||0)-(a.createdAt?.seconds||0))); renderBuildings(); renderConnections();
 }
 function renderBuildings(){
   $("statBuildings").textContent=buildings.length;
   $("statAdmins").textContent=connections.length;
-  $("buildingList").innerHTML=buildings.length?buildings.map(b=>`<div class="card"><div class="row"><div><h3>${esc(b.name)}</h3><div class="person-meta">${esc(b.address||"")}${b.city?", "+esc(b.city):""}</div></div><span class="pill pill-blue">${connections.filter(c=>c.buildingId===b.id).length} Admin${connections.filter(c=>c.buildingId===b.id).length===1?"":"s"}</span></div></div>`).join(""):`<div class="empty-state"><div class="emoji">🏢</div><h3>Add your first building</h3><p>Create buildings only. Roommate and Room Admin private data is never shown here.</p></div>`;
+  $("buildingList").innerHTML=buildings.length?buildings.map(b=>{
+    const count=connections.filter(c=>c.buildingId===b.id).length;
+    return `<div class="building-card card"><div class="row"><div class="building-icon">🏢</div><span class="pill pill-blue">${count} Admin${count===1?"":"s"}</span></div><div class="building-title">${esc(b.name)}</div><div class="building-meta">${esc(b.address||"Address not added")}${b.city?", "+esc(b.city):""}</div><div class="building-meta">${count?"Room Admin assigned":"Ready for Admin assignment"}</div></div>`;
+  }).join(""):`<div class="mini-empty" style="grid-column:1/-1">🏢 No buildings yet. Tap <b>＋ Add Building</b> to create your first building.</div>`;
 }
 function renderConnections(){
   $("statAdmins").textContent=connections.length;
   const html=connections.length?connections.map((c,i)=>{
     const building=buildings.find(b=>b.id===c.buildingId);
     const label=`Room Admin ${i+1}`;
-    return `<div class="card"><div class="row"><div><h3>👨‍💼 ${label}</h3><div class="person-meta">Connected · ${esc(building?.name||"No building assigned")}</div></div><button class="btn btn-outline manageAdmin" data-id="${esc(c.id)}" style="width:auto">Manage</button></div></div>`;
-  }).join(""): `<div class="empty-state"><div class="emoji">🔗</div><h3>No connected Room Admins</h3><p>Approve a Room Admin request to connect them to your building.</p></div>`;
+    return `<div class="admin-card card"><div class="admin-left"><div class="admin-avatar">👨‍💼</div><div><div class="person-name">${label}</div><div class="person-meta">Approved · ${esc(building?.name||"No building assigned")}</div></div></div><button class="btn btn-outline manageAdmin" data-id="${esc(c.id)}" style="width:auto">Manage</button></div>`;
+  }).join(""): `<div class="mini-empty">🔗 No connected Room Admins. New requests will appear above.</div>`;
   $("adminList").innerHTML=html;
   document.querySelectorAll(".manageAdmin").forEach(b=>b.onclick=()=>adminManageForm(connections.find(c=>c.id===b.dataset.id)));
 }
@@ -67,7 +72,7 @@ function broadcastForm(){
   $("sendBroadcast").onclick=async()=>{try{const title=$("broadcastTitle").value.trim(),message=$("broadcastMessage").value.trim();if(!title||!message)return toast("Enter title and message");let targets=connections;if($("broadcastTarget").value!=="all")targets=connections.filter(c=>c.buildingId===$("broadcastTarget").value);if(!targets.length)return toast("No Admin assigned to this building.");await sendLandlordNotification(me.uid,targets.map(c=>c.id),{title,message,type:$("broadcastType").value});closeModal();toast(`Notification sent to ${targets.length} Admin${targets.length===1?"":"s"}`)}catch(e){console.error(e);toast("Could not send notifications")}};
 }
 
-$("addBuildingBtn").onclick=propertyForm;
+$("addBuildingBtn").onclick=propertyForm;$("addBuildingBtn2").onclick=propertyForm;
 $("broadcastBtn").onclick=broadcastForm;
 $("closeModal").onclick=closeModal;
 $("modal").onclick=e=>{if(e.target.id==="modal")closeModal()};
@@ -76,4 +81,4 @@ $("homeNav").onclick=()=>{};
 $("noticeNav").onclick=broadcastForm;
 $("profileNav").onclick=()=>toast("Your landlord account is secure. Room Admin/Roommate private data is not visible here.");
 
-requireAuth({expectedRole:"landlord",onReady:async(user,profile)=>{me=user;$("welcome").textContent=profile.name||user.displayName||"Makan Malik";$("loader").classList.add("hidden");$("app").classList.remove("hidden");try{await loadConnections();await loadBuildings()}catch(e){console.error(e);toast("Could not load dashboard. Deploy the latest firestore.rules.")}}});
+requireAuth({expectedRole:"landlord",onReady:async(user,profile)=>{me=user;$("welcome").textContent=profile.name||user.displayName||"Makan Malik";$("loader").classList.add("hidden");$("app").classList.remove("hidden");try{await loadConnections();await loadBuildings()}catch(e){console.error("Makan Malik dashboard load:",e);toast(e?.code==="permission-denied"?"Access denied. Publish the latest firestore.rules.":"Dashboard could not load. Please refresh.")}}});

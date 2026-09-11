@@ -1,18 +1,40 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Makan Malik — The Roommate</title><link rel="manifest" href="../manifest.json"><link rel="stylesheet" href="../css/style.css"></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f2a47"><title>Makan Malik — The Roommate</title>
+<link rel="manifest" href="../manifest.json"><link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
 <div id="loader" class="center-loader"><div class="dim-spinner"></div></div>
-<div id="app" class="app hidden">
-<header class="app-header"><div><div class="greet">Makan Malik</div><div class="room-name" id="welcome">Building Manager</div></div><button id="logoutBtn" class="icon-btn" title="Logout">↪</button></header>
-<main class="app-body">
+<div id="app" class="app hidden landlord-app">
+<header class="app-header landlord-header">
+  <div class="brand-wrap"><div class="brand-mark">🏠</div><div><div class="greet">Makan Malik</div><div class="room-name" id="welcome">Property Manager</div></div></div>
+  <button id="logoutBtn" class="icon-btn" title="Logout">↪</button>
+</header>
+<main class="app-body landlord-body">
 <section id="dashboardView">
-<div class="card" style="margin-bottom:16px;border:1px solid var(--border);"><div class="row"><div><div class="section-title" style="margin:0">🔗 Your Makan Malik Code</div><div class="person-meta" style="margin-top:4px">Room Admin uses this code to request connection. You approve each Admin.</div></div><div id="landlordCode" class="pill pill-blue" style="font-size:1rem;letter-spacing:2px">—</div></div></div>
-<div class="card" id="adminRequestsCard" style="margin-bottom:16px;display:none;border:1px solid var(--border);"><div class="section-title" style="margin:0 0 10px">🔔 Room Admin Approval Requests</div><div id="adminRequestsList"></div></div>
-<div class="stat-grid"><div class="stat-card"><div class="label">Buildings</div><div class="value" id="statBuildings">0</div></div><div class="stat-card"><div class="label">Connected Admins</div><div class="value" id="statAdmins">0</div></div></div>
-<div class="row" style="margin:18px 0 10px"><h3 class="section-title" style="margin:0">🏢 My Buildings</h3><button id="addBuildingBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">+ Building</button></div>
-<div id="buildingList"></div>
-<div class="row" style="margin:24px 0 10px"><h3 class="section-title" style="margin:0">👨‍💼 Connected Room Admins</h3><button id="broadcastBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">📢 Send Notice</button></div>
-<div class="person-meta" style="margin-bottom:10px">Room Admin और Roommate की private details यहाँ दिखाई नहीं देतीं। आप सिर्फ building assignment और notifications manage कर सकते हैं.</div>
-<div id="adminList"></div>
+  <div class="landlord-hero card">
+    <div><div class="eyebrow">PROPERTY CONTROL CENTER</div><h1>Manage your buildings</h1><p>Create buildings, connect Room Admins and send important rent or maintenance notices — without accessing private roommate data.</p></div>
+    <div class="hero-actions"><button id="addBuildingBtn" class="btn btn-primary">＋ Add Building</button><button id="broadcastBtn" class="btn btn-light">📢 Send Notice</button></div>
+  </div>
+  <div class="stat-grid landlord-stats">
+    <div class="stat-card stat-accent"><div class="label">🏢 Buildings</div><div class="value" id="statBuildings">0</div><div class="stat-note">Your properties</div></div>
+    <div class="stat-card"><div class="label">👨‍💼 Connected Admins</div><div class="value" id="statAdmins">0</div><div class="stat-note">Approved connections</div></div>
+  </div>
+  <div class="section-head"><div><h2>Connection Requests</h2><p>Approve Room Admins who manage your buildings.</p></div><span class="section-badge" id="requestBadge">0</span></div>
+  <div id="adminRequestsCard" class="request-card card" style="display:none"><div id="adminRequestsList"></div></div>
+  <div id="noRequests" class="mini-empty">No pending connection requests.</div>
+  <div class="section-head"><div><h2>My Buildings</h2><p>Buildings available for Admin assignment.</p></div><button id="addBuildingBtn2" class="btn btn-outline compact">＋ Building</button></div>
+  <div id="buildingList" class="building-grid"></div>
+  <div class="section-head"><div><h2>Connected Room Admins</h2><p>Only connection and building assignment are shown. Private Room Admin/Roommate data stays hidden.</p></div></div>
+  <div id="adminList"></div>
+  <div class="privacy-banner"><span>🔒</span><div><b>Privacy protected</b><p>You cannot view Room Admin or Roommate personal details, expenses, chats or private room data from this account.</p></div></div>
 </section>
-</main><nav class="bottom-nav"><button class="nav-item active" id="homeNav"><span class="nav-icon">🏠</span>Home</button><button class="nav-item" id="noticeNav"><span class="nav-icon">📢</span>Notices</button><button class="nav-item" id="profileNav"><span class="nav-icon">👤</span>Profile</button></nav></div>
+</main>
+<nav class="bottom-nav"><button class="nav-item active" id="homeNav"><span class="nav-icon">⌂</span>Home</button><button class="nav-item" id="noticeNav"><span class="nav-icon">📢</span>Notices</button><button class="nav-item" id="profileNav"><span class="nav-icon">●</span>Profile</button></nav>
+</div>
 <div id="modal" class="overlay center hidden"><div class="sheet"><div class="row"><div class="sheet-title" id="modalTitle">Add</div><button id="closeModal" class="icon-btn">×</button></div><div id="modalBody"></div></div></div>
-<div id="toast" class="toast hidden"></div><script type="module" src="dashboard.js"></script></body></html>
+<div id="toast" class="toast hidden"></div>
+<script type="module" src="dashboard.js"></script>
+</body></html>

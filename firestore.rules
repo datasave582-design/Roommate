@@ -75,7 +75,10 @@ service cloud.firestore {
       //     `roomId` onto a member's profile right after approving them.
       allow update: if roleUnchanged() && request.resource.data.uid == resource.data.uid
         && (
+          // A user may update their own profile, but cannot change their role
+          // or attach themselves to a room through the client.
           (isSelf(uid) && request.resource.data.roomId == resource.data.roomId)
+          // A room admin may stamp roomId onto an approved roommate profile.
           || isRoomAdmin(request.resource.data.roomId)
           || isRoomAdminAfter(request.resource.data.roomId)
         );
@@ -185,7 +188,7 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------
-    // Landlord / property collections — active landlord portal.
+    // Landlord / property collections — scaffolded for Phase 2.
     // ---------------------------------------------------------------------
     match /properties/{propertyId} {
       allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;

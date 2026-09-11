@@ -1,16 +1,17 @@
 import { auth, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser, getUserProfile } from "../js/auth.js";
-import { formatMoney, showToast, friendlyError, withLoading, escapeHtml, formatDate, monthKey, monthLabel } from "../js/common.js";
+import { formatMoney, showToast, friendlyError, withLoading, escapeHtml, formatDate, monthKey, monthLabel, registerServiceWorker } from "../js/common.js";
 import {
   requestJoinRoom, listenRoom, listenMembers, listenExpenses, listenPayments,
-  computeBalances, listenMyNotifications, markNotificationRead, markAllNotificationsRead
+  computeBalances, listenSettlements, listenMyNotifications, markNotificationRead, markAllNotificationsRead
 } from "../js/room-data.js";
 import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import { db } from "../js/firebase-config.js";
 import { collection, query, where, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
-let currentUser = null, myProfile = null, roomId = null, members = [], expenses = [], payments = [];
+registerServiceWorker(new URL("../", import.meta.url).href);
+let currentUser = null, myProfile = null, roomId = null, members = [], expenses = [], payments = [], settlements = [];
 let selectedMonth = monthKey();
 
 requireAuth({
@@ -27,6 +28,10 @@ requireAuth({
 });
 
 function watchForPendingOrApproval() {
+  // Show the join form immediately as the default state so there's no blank
+  // flash while we wait for the (usually near-instant) snapshot below to
+  // tell us whether a pending request already exists.
+  $("joinOverlay").classList.remove("hidden");
   const q = query(collection(db, "joinRequests"), where("uid", "==", currentUser.uid), where("status", "==", "pending"));
   onSnap2(q, (snap) => {
     if (!snap.empty) {
@@ -79,6 +84,7 @@ function bootRoom(id) {
   });
   listenMembers(roomId, (m) => { members = m; recomputeAndRender(); });
   listenMyNotifications(currentUser.uid, renderNotifications);
+  listenSettlements(roomId, (list) => { settlements = list; recomputeAndRender(); });
   subscribeMonth(selectedMonth);
 }
 
@@ -104,7 +110,7 @@ function populateMonthSelect() {
 function recomputeAndRender() {
   if (!members.length) return;
   const active = members.filter(m => m.status === "active");
-  const balances = computeBalances(active, expenses, payments);
+  const balances = computeBalances(active, expenses, payments, settlements);
   const mine = balances.find(b => b.uid === currentUser.uid) || { share: 0, paid: 0, balance: 0 };
   const totalExpenses = expenses.filter(e => !e.archived).reduce((s, e) => s + e.amountPaise, 0);
   const totalPaid = payments.reduce((s, p) => s + p.amountPaise, 0);

@@ -2,7 +2,7 @@ import { auth, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser, getUserProfile } from "../js/auth.js";
 import { formatMoney, showToast, friendlyError, withLoading, escapeHtml, formatDate, monthKey, monthLabel, registerServiceWorker } from "../js/common.js";
 import {
-  requestJoinRoom, listenRoom, listenMembers, listenExpenses, listenPayments,
+  requestJoinRoom, cancelJoinRequest, listenRoom, listenMembers, listenExpenses, listenPayments,
   computeBalances, listenSettlements, listenMyNotifications, markNotificationRead, markAllNotificationsRead
 } from "../js/room-data.js";
 import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
@@ -12,6 +12,7 @@ import { collection, query, where, onSnapshot as onSnap2 } from "https://www.gst
 const $ = (id) => document.getElementById(id);
 registerServiceWorker(new URL("../", import.meta.url).href);
 let currentUser = null, myProfile = null, roomId = null, members = [], expenses = [], payments = [], settlements = [];
+let pendingRequestId = null;
 let selectedMonth = monthKey();
 
 requireAuth({
@@ -35,9 +36,11 @@ function watchForPendingOrApproval() {
   const q = query(collection(db, "joinRequests"), where("uid", "==", currentUser.uid), where("status", "==", "pending"));
   onSnap2(q, (snap) => {
     if (!snap.empty) {
+      pendingRequestId = snap.docs[0].id;
       $("joinOverlay").classList.add("hidden");
       $("pendingOverlay").classList.remove("hidden");
     } else {
+      pendingRequestId = null;
       $("pendingOverlay").classList.add("hidden");
       $("joinOverlay").classList.remove("hidden");
     }
@@ -173,5 +176,29 @@ document.querySelectorAll(".nav-item").forEach(item => {
     $("tab-" + item.dataset.tab).classList.remove("hidden");
   });
 });
-$("logoutBtn").addEventListener("click", async () => { await logoutUser(); window.location.href = ROOT_PATH + "index.html"; });
-$("joinLogoutBtn").addEventListener("click", async () => { await logoutUser(); window.location.href = ROOT_PATH + "index.html"; });
+async function handleRoommateLogout() {
+  try { await logoutUser(); } finally { window.location.href = ROOT_PATH + "index.html"; }
+}
+
+$("cancelRequestBtn").addEventListener("click", async () => {
+  if (!pendingRequestId || !currentUser) return;
+  if (!confirm("Cancel your join request?")) return;
+  const btn = $("cancelRequestBtn");
+  btn.disabled = true;
+  try {
+    await cancelJoinRequest(pendingRequestId, currentUser.uid);
+    pendingRequestId = null;
+    showToast("Join request cancelled.");
+    $("pendingOverlay").classList.add("hidden");
+    $("joinOverlay").classList.remove("hidden");
+    $("joinCode").value = "";
+  } catch (err) {
+    showToast(err.message || friendlyError(err), "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("logoutBtn").addEventListener("click", handleRoommateLogout);
+$("joinLogoutBtn").addEventListener("click", handleRoommateLogout);
+$("pendingLogoutBtn").addEventListener("click", handleRoommateLogout);

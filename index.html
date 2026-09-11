@@ -74,9 +74,10 @@
 import { auth, db, ROOT_PATH } from "./js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import { registerUser, loginUser, resetPassword, getUserProfile } from "./js/auth.js";
-import { friendlyError, validateEmail, validateMobile, withLoading, showToast } from "./js/common.js";
+import { friendlyError, validateEmail, validateMobile, withLoading, showToast, registerServiceWorker } from "./js/common.js";
 
 const $ = (id) => document.getElementById(id);
+registerServiceWorker(new URL("./", import.meta.url).href);
 const dashFor = { roomAdmin: ROOT_PATH + "admin/dashboard.html", landlord: ROOT_PATH + "landlord/dashboard.html", roommate: ROOT_PATH + "roommate/dashboard.html" };
 const roleLabel = { roomAdmin: "Room Admin", landlord: "Makan Malik", roommate: "Roommate" };
 

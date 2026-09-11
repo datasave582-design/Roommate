@@ -104,7 +104,14 @@ service cloud.firestore {
 
       match /members/{memberUid} {
         allow read: if isRoomMember(roomId);
-        allow create, update: if isRoomAdmin(roomId);
+        allow create: if isRoomAdmin(roomId)
+          && request.resource.data.uid == memberUid
+          && request.resource.data.role in ["admin", "roommate"]
+          && request.resource.data.status in ["active", "inactive"];
+        allow update: if isRoomAdmin(roomId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status in ["active", "inactive"];
         allow delete: if false; // deactivate via status field — never destroy financial history
       }
 

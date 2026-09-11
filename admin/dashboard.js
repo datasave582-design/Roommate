@@ -8,7 +8,7 @@ import {
   DEFAULT_CATEGORIES, createRoom, getRoomById, listenRoom,
   listenMembers, listenPendingRequests, approveJoinRequest, rejectJoinRequest, setMemberStatus,
   listenCategories, addCustomCategory,
-  addExpense, updateExpense, archiveExpense, listenExpenses,
+  addExpense, updateExpense, archiveExpense, deleteExpense, listenExpenses,
   addPayment, listenPayments,
   computeBalances, suggestSettlements, recordSettlement, listenSettlements,
   listenMyNotifications, markNotificationRead, markAllNotificationsRead, notifyRoom
@@ -194,15 +194,15 @@ function renderExpensesTab() {
         <div class="expense-amt">${formatMoney(e.amountPaise)}</div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
           <button class="btn-text" style="padding:2px;font-size:0.75rem;" data-edit="${e.id}">Edit</button>
-          <button class="btn-text" style="padding:2px;font-size:0.75rem;" data-archive="${e.id}">Archive</button>
+          <button class="btn-text danger-text" style="padding:2px;font-size:0.75rem;" data-remove="${e.id}">Remove</button>
         </div>
       </div>
     </div>`).join("") : emptyState("📋", "No expenses found", "Try a different filter or month.");
 
-  $("expensesList").querySelectorAll("[data-archive]").forEach(btn => {
-    btn.onclick = () => confirmAction("Archive this expense?", "It will be removed from active totals but kept in history.", async () => {
-      await archiveExpense(roomId, btn.dataset.archive, currentUser.uid);
-      showToast("Expense archived.");
+  $("expensesList").querySelectorAll("[data-remove]").forEach(btn => {
+    btn.onclick = () => confirmAction("Remove this expense?", "This will permanently remove the expense from the room. This action cannot be undone.", async () => {
+      await deleteExpense(roomId, btn.dataset.remove, currentUser.uid);
+      showToast("Expense removed.");
     });
   });
   $("expensesList").querySelectorAll("[data-edit]").forEach(btn => {

@@ -139,5 +139,7 @@ img{max-width:100%;display:block;}
   .bottom-nav{max-width:640px;left:50%;right:auto;transform:translateX(-50%);border-radius:20px 20px 0 0;box-shadow:0 -4px 20px rgba(15,42,71,0.1);}
   .fab{right:calc(50% - 300px);}
 }
-.role-card.soon{opacity:0.65;position:relative;}
-.role-card .soon-badge{position:absolute;top:10px;right:12px;background:var(--orange);color:#fff;font-size:0.62rem;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:0.02em;}
+/* All role cards are active. Makan Malik is a full production role. */
+.role-card{position:relative;}
+.role-card:active{transform:scale(.99);}
+@media(max-width:420px){.landing{padding-top:38px}.landing-logo{font-size:1.55rem}.landing-tag{margin-bottom:28px}.role-card{padding:18px}.auth-card{padding:26px 20px}}

@@ -53,13 +53,13 @@
     <h2 id="loginTitle">Login</h2>
     <p class="auth-sub" id="loginSub">Welcome back</p>
     <div id="loginError" class="auth-error hidden"></div>
+    <button type="button" id="googleLoginBtn" class="btn btn-outline" style="margin-bottom:12px;">🔐 Continue with Google</button>
+    <div style="text-align:center;color:var(--text-dim);font-size:.78rem;margin-bottom:12px;">or use email &amp; password</div>
     <form id="loginForm">
       <div class="field"><label>Email</label><input type="email" id="loginEmail" required autocomplete="email"></div>
       <div class="field"><label>Password</label><input type="password" id="loginPassword" required autocomplete="current-password"></div>
       <button type="submit" id="loginBtn" class="btn btn-primary">Login</button>
     </form>
-    <div class="or-divider"><span>or</span></div>
-    <button type="button" id="googleLoginBtn" class="btn google-btn">Continue with Google</button>
     <div style="text-align:right;margin-top:10px;"><button class="btn-text" id="forgotBtn">Forgot Password?</button></div>
     <div class="auth-switch">New here? <button class="btn-text" id="goRegister">Create an account</button></div>
   </div>
@@ -120,7 +120,7 @@ function toast(msg) {
   window.__toastTimer = setTimeout(() => el.classList.add("hidden"), 2800);
 }
 function dashboardPath(role, root) {
-  return root + (role === "roomAdmin" ? "admin/dashboard.html" : role === "landlord" ? "landlord/dashboard.html" : "roommate/dashboard.html");
+  return root + ({ roomAdmin: "admin/dashboard.html", landlord: "landlord/dashboard.html", roommate: "roommate/dashboard.html" }[role] || "index.html");
 }
 
 async function loadFirebase() {
@@ -169,6 +169,38 @@ $("registerBack").onclick = (e) => { e.preventDefault(); show("landing"); };
 $("goRegister").onclick = () => { setError("registerError", ""); show("register"); };
 $("goLogin").onclick = () => { setError("loginError", ""); show("login"); };
 
+async function finishGoogleLogin(m, user) {
+  let profile = await m.getUserProfile(user.uid);
+  if (!profile) {
+    if (!selectedRole) throw { code: "role-required", message: "Please select a login type first." };
+    await m.createGoogleProfile(user, selectedRole);
+    profile = await m.getUserProfile(user.uid);
+  }
+  if (!profile || !profile.role) throw { code: "profile-missing", message: "Account profile could not be created." };
+  if (selectedRole && profile.role !== selectedRole) {
+    const actual = ROLE_LABEL[profile.role] || profile.role;
+    throw { code: "wrong-role", message: `This Google account is already registered as ${actual}. Please use another Google account for ${ROLE_LABEL[selectedRole]}.` };
+  }
+  window.location.replace(dashboardPath(profile.role, m.ROOT_PATH));
+}
+
+$("googleLoginBtn").addEventListener("click", async () => {
+  setError("loginError", "");
+  const btn = $("googleLoginBtn");
+  const old = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner" style="border-color:rgba(15,42,71,.25);border-top-color:var(--navy)"></span>';
+  try {
+    const m = await loadFirebase();
+    await m.loginWithGoogle(selectedRole);
+    if (m.auth.currentUser) await finishGoogleLogin(m, m.auth.currentUser);
+  } catch (err) {
+    if (err && err.code === "auth/popup-redirect") return;
+    setError("loginError", (helpers && helpers.friendlyError) ? helpers.friendlyError(err) : (err.message || "Google login failed."));
+  } finally {
+    btn.disabled = false; btn.innerHTML = old;
+  }
+});
+
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   setError("loginError", "");
@@ -187,7 +219,7 @@ $("loginForm").addEventListener("submit", async (e) => {
         return setError("loginError", "Account data not found. Please contact support.");
       }
       if (!["roomAdmin", "landlord", "roommate"].includes(profile.role)) {
-        return setError("loginError", "This account type is not available yet.");
+        return setError("loginError", "This account type is not available.");
       }
       if (selectedRole && profile.role !== selectedRole) {
         const actual = ROLE_LABEL[profile.role] || profile.role;
@@ -201,31 +233,6 @@ $("loginForm").addEventListener("submit", async (e) => {
     }
   } catch (err) {
     setError("loginError", (helpers && helpers.friendlyError) ? helpers.friendlyError(err) : "Firebase could not be loaded. Check internet connection and try again.");
-  }
-});
-
-$("googleLoginBtn").addEventListener("click", async () => {
-  setError("loginError", "");
-  const btn = $("googleLoginBtn");
-  const original = btn.innerHTML;
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Connecting…';
-  try {
-    const m = await loadFirebase();
-    const result = await m.loginWithGoogle(selectedRole);
-    const profile = result.profile || await m.getUserProfile(result.user.uid);
-    if (!profile || !profile.role) throw new Error("Account profile could not be created.");
-    if (profile.role !== selectedRole) {
-      const actual = ROLE_LABEL[profile.role] || profile.role;
-      setError("loginError", `This Google account is already registered as ${actual}. Opening the correct dashboard…`);
-      setTimeout(() => window.location.replace(dashboardPath(profile.role, m.ROOT_PATH)), 700);
-      return;
-    }
-    window.location.replace(dashboardPath(profile.role, m.ROOT_PATH));
-  } catch (err) {
-    console.error(err);
-    setError("loginError", (helpers && helpers.friendlyError) ? helpers.friendlyError(err) : "Google login failed. Please try again.");
-  } finally {
-    btn.disabled = false; btn.innerHTML = original;
   }
 });
 
@@ -278,6 +285,10 @@ show("landing");
 setTimeout(async () => {
   try {
     const m = await loadFirebase();
+    // Complete a Google redirect login before the normal auto-login guard.
+    // This is especially important on Android Chrome where popup login can
+    // fall back to redirect.
+    try { await m.finishGoogleRedirect(); } catch (e) { console.warn("Google redirect result:", e); }
     m.onAuthStateChanged(m.auth, async (user) => {
       if (!user) return;
       try {
@@ -285,7 +296,7 @@ setTimeout(async () => {
           m.getUserProfile(user.uid),
           new Promise(resolve => setTimeout(() => resolve(null), 5000))
         ]);
-        if (profile && ["roomAdmin", "roommate"].includes(profile.role)) {
+        if (profile && ["roomAdmin", "landlord", "roommate"].includes(profile.role)) {
           window.location.replace(dashboardPath(profile.role, m.ROOT_PATH));
         }
       } catch (err) {

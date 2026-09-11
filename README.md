@@ -56,3 +56,12 @@ js/room-data.js          all room/expense/payment/balance/settlement logic
 admin/dashboard.html+js  Room Admin app
 roommate/dashboard.html+js  Roommate app
 ```
+
+## Makan Malik ↔ Room Admin connection (latest)
+1. Makan Malik dashboard shows a unique **Room Admin Connection Code**.
+2. Room Admin enters that code and sends an approval request.
+3. Makan Malik sees **Room Admin Approval Requests** and can Approve/Reject.
+4. After approval, the Room Admin profile is linked to that Makan Malik.
+5. Room Admin can create the room only after Makan Malik approval; the room stores `landlordUid` so all three roles are connected.
+6. Makan Malik can see connected rooms and manage monthly rent, due date, tenant details, room status, and record rent payments.
+7. Deploy the included `firestore.rules` to Firebase before testing this workflow.

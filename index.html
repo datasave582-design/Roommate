@@ -35,8 +35,7 @@
       <div class="emoji">👨‍💼</div>
       <div><h3>Room Admin</h3><p>Manage room expenses &amp; roommates</p></div>
     </div>
-    <div class="role-card soon" data-role="landlord">
-      <span class="soon-badge">SOON</span>
+    <div class="role-card" data-role="landlord">
       <div class="emoji">🏠</div>
       <div><h3>Makan Malik</h3><p>Manage building, rooms &amp; rent</p></div>
     </div>
@@ -59,6 +58,8 @@
       <div class="field"><label>Password</label><input type="password" id="loginPassword" required autocomplete="current-password"></div>
       <button type="submit" id="loginBtn" class="btn btn-primary">Login</button>
     </form>
+    <div class="or-divider"><span>or</span></div>
+    <button type="button" id="googleLoginBtn" class="btn google-btn">Continue with Google</button>
     <div style="text-align:right;margin-top:10px;"><button class="btn-text" id="forgotBtn">Forgot Password?</button></div>
     <div class="auth-switch">New here? <button class="btn-text" id="goRegister">Create an account</button></div>
   </div>
@@ -83,109 +84,160 @@
 </div>
 
 <script type="module">
-import { auth, ROOT_PATH } from "./js/firebase-config.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { registerUser, loginUser, resetPassword, getUserProfile } from "./js/auth.js";
-import { friendlyError, validateEmail, validateMobile, withLoading, showToast, registerServiceWorker } from "./js/common.js";
-
+/*
+ * IMPORTANT: Firebase is loaded only after the user chooses a role.
+ * The landing screen must never depend on a remote Firebase module just to
+ * make its buttons clickable. This fixes the common GitHub Pages/mobile issue
+ * where one failed module import leaves the entire page looking dead.
+ */
 const $ = (id) => document.getElementById(id);
-registerServiceWorker(new URL("./", import.meta.url).href).catch(() => {});
-const dashFor = { roomAdmin: ROOT_PATH + "admin/dashboard.html", landlord: ROOT_PATH + "landlord/dashboard.html", roommate: ROOT_PATH + "roommate/dashboard.html" };
-const roleLabel = { roomAdmin: "Room Admin", landlord: "Makan Malik", roommate: "Roommate" };
-
+const ROLE_LABEL = { roomAdmin: "Room Admin", landlord: "Makan Malik", roommate: "Roommate" };
 let selectedRole = null;
+let firebaseLoaded = null;
+let helpers = null;
+
 function show(view) {
   ["landing", "login", "register"].forEach(v => $("view-" + v).classList.add("hidden"));
   $("view-" + view).classList.remove("hidden");
 }
-
-// ---- Boot: if already logged in, skip straight to their dashboard ----
-let bootFinished = false;
-function finishBoot() {
-  if (bootFinished) return;
-  bootFinished = true;
-  clearTimeout(window.__roommateBootTimer);
-  $("loader").classList.add("hidden");
-  show("landing");
-}
-
-onAuthStateChanged(auth, async (user) => {
-  try {
-    if (user) {
-      const profile = await Promise.race([
-        getUserProfile(user.uid),
-        new Promise(resolve => setTimeout(() => resolve(null), 5000))
-      ]);
-      if (profile && dashFor[profile.role]) {
-        clearTimeout(window.__roommateBootTimer);
-        window.location.replace(dashFor[profile.role]);
-        return;
-      }
-    }
-  } catch (err) {
-    console.warn("Auth boot check failed:", err);
-  }
-  finishBoot();
-});
-
-document.querySelectorAll(".role-card").forEach(card => {
-  card.addEventListener("click", () => {
-    const role = card.dataset.role;
-    if (role === "landlord") {
-      showToast("Makan Malik portal is launching soon 🚧");
-      return;
-    }
-    selectedRole = role;
-    const label = roleLabel[selectedRole];
-    $("loginTitle").textContent = label + " Login";
-    $("loginSub").textContent = "Login to your " + label + " account";
-    $("registerTitle").textContent = label + " — Create Account";
-    $("registerSub").textContent = "Register as " + label;
-    show("login");
-  });
-});
-$("loginBack").onclick = (e) => { e.preventDefault(); show("landing"); };
-$("registerBack").onclick = (e) => { e.preventDefault(); show("landing"); };
-$("goRegister").onclick = () => show("register");
-$("goLogin").onclick = () => show("login");
-
 function setError(id, msg) {
   const el = $(id);
-  if (!msg) { el.classList.add("hidden"); return; }
+  if (!msg) { el.classList.add("hidden"); el.textContent = ""; return; }
   el.textContent = msg;
   el.classList.remove("hidden");
 }
+function toast(msg) {
+  let el = $("__toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "__toast";
+    el.className = "toast hidden";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer = setTimeout(() => el.classList.add("hidden"), 2800);
+}
+function dashboardPath(role, root) {
+  return root + (role === "roomAdmin" ? "admin/dashboard.html" : role === "landlord" ? "landlord/dashboard.html" : "roommate/dashboard.html");
+}
+
+async function loadFirebase() {
+  if (firebaseLoaded) return firebaseLoaded;
+  firebaseLoaded = (async () => {
+    try {
+      const [config, authMod, authHelpers, common] = await Promise.all([
+        import("./js/firebase-config.js"),
+        import("https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js"),
+        import("./js/auth.js"),
+        import("./js/common.js")
+      ]);
+      helpers = { ...config, ...authMod, ...authHelpers, ...common };
+      return helpers;
+    } catch (err) {
+      console.error("Firebase boot failed", err);
+      firebaseLoaded = null;
+      throw err;
+    }
+  })();
+  return firebaseLoaded;
+}
+
+function showLoginForRole(role) {
+  selectedRole = role;
+  const label = ROLE_LABEL[role];
+  $("loginTitle").textContent = label + " Login";
+  $("loginSub").textContent = "Login to your " + label + " account";
+  $("registerTitle").textContent = label + " — Create Account";
+  $("registerSub").textContent = "Register as " + label;
+  setError("loginError", "");
+  setError("registerError", "");
+  show("login");
+}
+
+// Landing buttons work with zero Firebase dependency.
+document.querySelectorAll(".role-card").forEach(card => {
+  card.addEventListener("click", () => {
+    const role = card.dataset.role;
+    showLoginForRole(role);
+  });
+});
+
+$("loginBack").onclick = (e) => { e.preventDefault(); show("landing"); };
+$("registerBack").onclick = (e) => { e.preventDefault(); show("landing"); };
+$("goRegister").onclick = () => { setError("registerError", ""); show("register"); };
+$("goLogin").onclick = () => { setError("loginError", ""); show("login"); };
 
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   setError("loginError", "");
-  const email = $("loginEmail").value.trim();
-  const password = $("loginPassword").value;
-  await withLoading($("loginBtn"), async () => {
+  try {
+    const m = await loadFirebase();
+    const email = $("loginEmail").value.trim();
+    const password = $("loginPassword").value;
+    if (!m.validateEmail(email)) return setError("loginError", "Please enter a valid email address.");
+    const btn = $("loginBtn");
+    const original = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
-      const user = await loginUser(email, password);
-      const profile = await getUserProfile(user.uid);
-      if (!profile) { setError("loginError", "Account data not found. Please contact support."); return; }
+      const user = await m.loginUser(email, password);
+      const profile = await m.getUserProfile(user.uid);
+      if (!profile || !profile.role) {
+        return setError("loginError", "Account data not found. Please contact support.");
+      }
+      if (!["roomAdmin", "landlord", "roommate"].includes(profile.role)) {
+        return setError("loginError", "This account type is not available yet.");
+      }
       if (selectedRole && profile.role !== selectedRole) {
-        setError("loginError", `This account is registered as ${roleLabel[profile.role]}, not ${roleLabel[selectedRole]}. Redirecting to the right dashboard…`);
-        setTimeout(() => window.location.href = dashFor[profile.role], 1400);
+        const actual = ROLE_LABEL[profile.role] || profile.role;
+        setError("loginError", `This account is registered as ${actual}. Opening the correct dashboard…`);
+        setTimeout(() => { window.location.href = dashboardPath(profile.role, m.ROOT_PATH); }, 900);
         return;
       }
-      window.location.href = dashFor[profile.role];
-    } catch (err) {
-      setError("loginError", friendlyError(err));
+      window.location.href = dashboardPath(profile.role, m.ROOT_PATH);
+    } finally {
+      btn.disabled = false; btn.innerHTML = original;
     }
-  })();
+  } catch (err) {
+    setError("loginError", (helpers && helpers.friendlyError) ? helpers.friendlyError(err) : "Firebase could not be loaded. Check internet connection and try again.");
+  }
+});
+
+$("googleLoginBtn").addEventListener("click", async () => {
+  setError("loginError", "");
+  const btn = $("googleLoginBtn");
+  const original = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Connecting…';
+  try {
+    const m = await loadFirebase();
+    const result = await m.loginWithGoogle(selectedRole);
+    const profile = result.profile || await m.getUserProfile(result.user.uid);
+    if (!profile || !profile.role) throw new Error("Account profile could not be created.");
+    if (profile.role !== selectedRole) {
+      const actual = ROLE_LABEL[profile.role] || profile.role;
+      setError("loginError", `This Google account is already registered as ${actual}. Opening the correct dashboard…`);
+      setTimeout(() => window.location.replace(dashboardPath(profile.role, m.ROOT_PATH)), 700);
+      return;
+    }
+    window.location.replace(dashboardPath(profile.role, m.ROOT_PATH));
+  } catch (err) {
+    console.error(err);
+    setError("loginError", (helpers && helpers.friendlyError) ? helpers.friendlyError(err) : "Google login failed. Please try again.");
+  } finally {
+    btn.disabled = false; btn.innerHTML = original;
+  }
 });
 
 $("forgotBtn").addEventListener("click", async () => {
   const email = $("loginEmail").value.trim();
-  if (!validateEmail(email)) { setError("loginError", "Enter your email above first, then tap Forgot Password."); return; }
   try {
-    await resetPassword(email);
-    showToast("Password reset email sent.");
+    const m = await loadFirebase();
+    if (!m.validateEmail(email)) return setError("loginError", "Enter your email above first, then tap Forgot Password.");
+    await m.resetPassword(email);
+    toast("Password reset email sent.");
   } catch (err) {
-    setError("loginError", friendlyError(err));
+    setError("loginError", (helpers && helpers.friendlyError) ? helpers.friendlyError(err) : "Could not send reset email.");
   }
 });
 
@@ -196,22 +248,54 @@ $("registerForm").addEventListener("submit", async (e) => {
   const mobile = $("regMobile").value.trim();
   const email = $("regEmail").value.trim();
   const password = $("regPassword").value;
-
   if (name.length < 2) return setError("registerError", "Please enter your full name.");
-  if (!validateMobile(mobile)) return setError("registerError", "Enter a valid 10-digit mobile number.");
-  if (!validateEmail(email)) return setError("registerError", "Please enter a valid email address.");
+  if (!/^[6-9]\d{9}$/.test(mobile)) return setError("registerError", "Enter a valid 10-digit mobile number.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setError("registerError", "Please enter a valid email address.");
   if (password.length < 6) return setError("registerError", "Password should be at least 6 characters.");
   if (!selectedRole) return setError("registerError", "Please select a login type first.");
-
-  await withLoading($("registerBtn"), async () => {
+  try {
+    const m = await loadFirebase();
+    const btn = $("registerBtn");
+    const original = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
-      await registerUser({ name, email, mobile, password, role: selectedRole });
-      window.location.href = dashFor[selectedRole];
-    } catch (err) {
-      setError("registerError", friendlyError(err));
+      await m.registerUser({ name, email, mobile, password, role: selectedRole });
+      window.location.href = dashboardPath(selectedRole, m.ROOT_PATH);
+    } finally {
+      btn.disabled = false; btn.innerHTML = original;
     }
-  })();
+  } catch (err) {
+    setError("registerError", (helpers && helpers.friendlyError) ? helpers.friendlyError(err) : "Could not create the account. Please try again.");
+  }
 });
+
+// Never block the first screen on Firebase/network availability.
+// If Firebase is available, quietly redirect an already logged-in user.
+// Otherwise the landing/login/register UI remains fully usable.
+clearTimeout(window.__roommateBootTimer);
+$("loader").classList.add("hidden");
+show("landing");
+setTimeout(async () => {
+  try {
+    const m = await loadFirebase();
+    m.onAuthStateChanged(m.auth, async (user) => {
+      if (!user) return;
+      try {
+        const profile = await Promise.race([
+          m.getUserProfile(user.uid),
+          new Promise(resolve => setTimeout(() => resolve(null), 5000))
+        ]);
+        if (profile && ["roomAdmin", "roommate"].includes(profile.role)) {
+          window.location.replace(dashboardPath(profile.role, m.ROOT_PATH));
+        }
+      } catch (err) {
+        console.warn("Auth boot check failed:", err);
+      }
+    });
+  } catch (err) {
+    console.warn("Firebase auto-login check skipped:", err);
+  }
+}, 100);
 </script>
 </body>
 </html>

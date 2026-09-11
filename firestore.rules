@@ -185,7 +185,7 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------------
-    // Landlord / property collections — scaffolded for Phase 2.
+    // Landlord / property collections — active landlord portal.
     // ---------------------------------------------------------------------
     match /properties/{propertyId} {
       allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;

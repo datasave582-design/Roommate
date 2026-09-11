@@ -1,56 +1,42 @@
-# The Roommate — Phase 1 (Room Admin + Roommate)
+# The Roommate — Ready-to-use
 
-"Room ka poora hisaab, sabke saamne clear."
+A responsive room-management app for **Room Admin, Makan Malik and Roommate**.
 
-## What's built in this phase
-- Landing page with 3-role selection (Room Admin / Makan Malik / Roommate)
-- Email/password auth: register, login, logout, forgot password
-- **Room Admin**: create room (unique room code), approve/reject join requests,
-  add/archive expenses (equal or custom split, shared or personal), record
-  payments, live balance dashboard, auto-suggested settlements, notifications,
-  remove roommate (soft — history kept)
-- **Roommate**: join-by-code flow with pending-approval state, read-only
-  dashboard (balance, share, room expenses, rent info, notifications)
-- Money handled in integer paise everywhere (no floating-point drift)
-- Firestore Security Rules are the real authorization layer — role, adminUid,
-  and ownerUid can never be changed from the browser
-- PWA shell (manifest + service worker) with offline app-shell caching; browser install UI appears when supported
+## Included
+- Gmail / Google one-tap-style sign-in for all three roles
+- Persistent Firebase login (browser local persistence) + automatic dashboard redirect
+- Email/password login and password reset
+- Room Admin: room, members, expenses, payments, balances, settlements and notifications
+- Roommate: join by room code, approval flow, balances, expenses and notifications
+- **Makan Malik portal is active (no SOON badge):**
+  - Create and manage properties
+  - Add rooms with rent, floor, type and status
+  - Add/update tenant details
+  - Record rent payments and payment mode
+  - Publish property notices
+  - Property/room/tenant/payment overview
+- Responsive mobile + desktop UI
+- PWA manifest + service worker
+- Firestore security rules with role/owner checks
 
-**Not yet built (Phase 2):** Landlord/Makan Malik portal (properties, rooms,
-tenants, rent, notices), CSV/print reports, FCM push notifications, room-code
-regeneration, expense editing (archive works; edit doesn't yet).
+## Firebase setup
 
-## Deploy steps
+1. Firebase Console → Authentication → Sign-in method → enable **Google** and **Email/Password**.
+2. Firebase Console → Authentication → Settings → Authorized domains: add your live hosting domain.
+3. Deploy rules:
+   `firebase deploy --only firestore:rules,firestore:indexes`
+4. Deploy/upload the project to your hosting.
 
-1. **Install Firebase CLI** (if you haven't): `npm install -g firebase-tools`
-2. **Login & select the project:**
-   ```
-   firebase login
-   firebase use roommate-b1018
-   ```
-3. **Enable Email/Password sign-in** in Firebase Console → Authentication → Sign-in method.
-4. **Deploy security rules & indexes:**
-   ```
-   firebase deploy --only firestore:rules,firestore:indexes
-   ```
-   ⚠️ Test the rules in the Firebase Console Rules Playground before going live —
-   review each collection's allow/deny against a few real create/read/update calls.
-5. **Deploy hosting** (or upload this folder to any static host):
-   ```
-   firebase init hosting   # point public dir to this folder
-   firebase deploy --only hosting
-   ```
+### Important about Gmail auto-login
+Google login is real Firebase Authentication. The browser keeps the Firebase session locally, so after the first successful login the app automatically restores the session and opens the correct dashboard. A new Google user is assigned the role selected before Google login.
 
-## File map
-```
-index.html              landing + login/register
-manifest.json, service-worker.js, icon-192.png, icon-512.png   PWA
-firestore.rules          security rules (all collections)
-firestore.indexes.json   composite indexes actually used by the app
-js/firebase-config.js    Firebase init (your config, already filled in)
-js/auth.js               register/login/logout/reset + role-based route guard
-js/common.js             money (paise) helpers, toast, validation, PWA install
-js/room-data.js          all room/expense/payment/balance/settlement logic
-admin/dashboard.html+js  Room Admin app
-roommate/dashboard.html+js  Roommate app
-```
+If Google sign-in shows an `unauthorized-domain` error, add the exact website domain under Firebase Authentication → Settings → Authorized domains.
+
+## Files
+- `index.html` — responsive landing/login/register + Google login
+- `js/auth.js` — Firebase auth, Google auth, role routing
+- `js/firebase-config.js` — Firebase configuration
+- `admin/` — Room Admin
+- `roommate/` — Roommate
+- `landlord/` — Makan Malik
+- `firestore.rules` — security

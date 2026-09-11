@@ -174,7 +174,11 @@ service cloud.firestore {
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.roomId == resource.data.roomId
         && request.resource.data.status in ["approved", "rejected"];
-      allow delete: if false;
+      // A roommate may cancel only their own still-pending request.
+      // Admin-resolved requests cannot be deleted by the applicant.
+      allow delete: if isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && resource.data.status == "pending";
     }
 
     // ---------------------------------------------------------------------

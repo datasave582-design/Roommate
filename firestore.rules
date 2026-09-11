@@ -1,0 +1,208 @@
+rules_version = '2';
+
+// ============================================================================
+// THE ROOMMATE — Firestore Security Rules
+// These rules ARE the authorization layer. The client never grants access by
+// itself (no "localStorage.role" or "admin=true" trust) — every read/write is
+// re-checked here against server-held facts: rooms/{id}.adminUid,
+// properties/{id}.ownerUid, and rooms/{id}/members/{uid}.status.
+//
+// Phase 1 covers Room Admin + Roommate collections. Landlord/property
+// collections are included so Phase 2 can attach directly without a
+// rules rewrite; they currently allow only the owning landlord full access.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isRoomAdmin(roomId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && get(/databases/$(database)/documents/rooms/$(roomId)).data.adminUid == request.auth.uid;
+    }
+    function isRoomMember(roomId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid));
+    }
+    function isActiveRoomMember(roomId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)).data.status == "active";
+    }
+    function isLandlordOwner(propertyId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/properties/$(propertyId))
+        && get(/databases/$(database)/documents/properties/$(propertyId)).data.ownerUid == request.auth.uid;
+    }
+    function roleUnchanged() {
+      return request.resource.data.role == resource.data.role;
+    }
+
+    // ---------------------------------------------------------------------
+    // users/{uid} — profile. Role is set once at registration and is
+    // frontend-immutable forever after (rule below blocks any role change,
+    // no matter what the client sends).
+    // ---------------------------------------------------------------------
+    match /users/{uid} {
+      allow create: if isSelf(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.role in ["roomAdmin", "landlord", "roommate"];
+
+      allow read: if isSelf(uid)
+        || (resource.data.roomId != null
+            && exists(/databases/$(database)/documents/rooms/$(resource.data.roomId)/members/$(request.auth.uid)));
+
+      // Two ways a user doc can be updated, both frontend-blocked from
+      // touching role/uid:
+      //  1. The user updates their own profile fields.
+      //  2. The admin of the room named in the incoming write stamps
+      //     `roomId` onto a member's profile right after approving them.
+      allow update: if roleUnchanged() && request.resource.data.uid == resource.data.uid
+        && (isSelf(uid) || isRoomAdmin(request.resource.data.roomId));
+
+      allow delete: if false;
+
+      match /notifications/{notifId} {
+        allow read, update: if isSelf(uid);
+        allow create: if isSignedIn(); // server-side trigger or peer action creates a notification for another user
+        allow delete: if false;
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // roomCodes/{code} — uniqueness index only. Readable so a join-by-code
+    // lookup can resolve roomId; never contains financial data.
+    // ---------------------------------------------------------------------
+    match /roomCodes/{code} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------------
+    // rooms/{roomId}
+    // ---------------------------------------------------------------------
+    match /rooms/{roomId} {
+      allow create: if isSignedIn() && request.resource.data.adminUid == request.auth.uid;
+      allow read: if isRoomMember(roomId);
+      allow update: if isRoomAdmin(roomId)
+        && request.resource.data.adminUid == resource.data.adminUid
+        && request.resource.data.roomId == resource.data.roomId;
+      allow delete: if false;
+
+      match /members/{memberUid} {
+        allow read: if isRoomMember(roomId);
+        allow create, update: if isRoomAdmin(roomId);
+        allow delete: if false; // deactivate via status field — never destroy financial history
+      }
+
+      match /categories/{categoryId} {
+        allow read: if isRoomMember(roomId);
+        allow create: if isRoomAdmin(roomId);
+        allow update, delete: if false;
+      }
+
+      match /expenses/{expenseId} {
+        allow read: if isRoomMember(roomId);
+        allow create, update: if isRoomAdmin(roomId); // roommates are read-only, per spec §21
+        allow delete: if false; // archive-only, never hard-delete financial records
+      }
+
+      match /payments/{paymentId} {
+        allow read: if isRoomMember(roomId);
+        allow create: if isRoomAdmin(roomId);
+        allow update, delete: if false;
+      }
+
+      match /settlements/{settlementId} {
+        allow read: if isRoomMember(roomId);
+        allow create: if isRoomAdmin(roomId);
+        allow update, delete: if false;
+      }
+
+      match /notifications/{notifId} {
+        allow read: if isRoomMember(roomId);
+        allow create: if isRoomAdmin(roomId);
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // joinRequests/{requestId}
+    // ---------------------------------------------------------------------
+    match /joinRequests/{requestId} {
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == "pending";
+      allow read: if isSignedIn()
+        && (resource.data.uid == request.auth.uid || isRoomAdmin(resource.data.roomId));
+      allow update: if isRoomAdmin(resource.data.roomId)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.roomId == resource.data.roomId
+        && request.resource.data.status in ["approved", "rejected"];
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------------
+    // auditLogs/{logId} — append-only, never client-editable or deletable.
+    // ---------------------------------------------------------------------
+    match /auditLogs/{logId} {
+      allow create: if isSignedIn() && request.resource.data.actorUid == request.auth.uid;
+      allow read: if isSignedIn() && isRoomAdmin(resource.data.roomId);
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------------
+    // Landlord / property collections — scaffolded for Phase 2.
+    // ---------------------------------------------------------------------
+    match /properties/{propertyId} {
+      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read, update: if isLandlordOwner(propertyId);
+      allow delete: if false;
+
+      match /floors/{floorId} {
+        allow read, create, update: if isLandlordOwner(propertyId);
+        allow delete: if false;
+      }
+      match /rooms/{roomId} {
+        allow read, create, update: if isLandlordOwner(propertyId);
+        allow delete: if false;
+
+        match /tenants/{tenantId} {
+          allow read, create, update: if isLandlordOwner(propertyId);
+          allow delete: if false;
+        }
+      }
+      match /rentPayments/{paymentId} {
+        allow read, create: if isLandlordOwner(propertyId);
+        allow update, delete: if false;
+      }
+      match /notices/{noticeId} {
+        allow read, create: if isLandlordOwner(propertyId);
+        allow update, delete: if false;
+      }
+    }
+
+    match /propertyRequests/{requestId} {
+      allow create: if isSignedIn();
+      allow read, update: if isSignedIn()
+        && (resource.data.requestedBy == request.auth.uid || isLandlordOwner(resource.data.propertyId));
+      allow delete: if false;
+    }
+
+    // Default deny for anything not explicitly matched above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

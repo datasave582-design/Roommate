@@ -7,7 +7,7 @@ import { db } from "./firebase-config.js";
 import {
   collection, doc, addDoc, updateDoc, getDoc, getDocs, setDoc, deleteField,
   query, where, orderBy, limit, startAfter, onSnapshot, serverTimestamp,
-  runTransaction, writeBatch
+  runTransaction, writeBatch, deleteDoc
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import { generateRoomCode } from "./common.js";
 
@@ -203,6 +203,12 @@ export async function updateExpense(roomId, expenseId, actorUid, patch) {
   await updateDoc(doc(db, "rooms", roomId, "expenses", expenseId), { ...patch, updatedAt: serverTimestamp() });
   await logAudit(roomId, actorUid, "expense_edited", "expense", expenseId);
 }
+export async function deleteExpense(roomId, expenseId, actorUid) {
+  if (!roomId || !expenseId || !actorUid) throw { code: "invalid-argument", message: "Invalid expense." };
+  await deleteDoc(doc(db, "rooms", roomId, "expenses", expenseId));
+  await logAudit(roomId, actorUid, "expense_deleted", "expense", expenseId);
+}
+
 export async function archiveExpense(roomId, expenseId, actorUid) {
   await updateDoc(doc(db, "rooms", roomId, "expenses", expenseId), { archived: true, updatedAt: serverTimestamp() });
   await logAudit(roomId, actorUid, "expense_archived", "expense", expenseId);

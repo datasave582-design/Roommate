@@ -174,3 +174,4 @@ document.querySelectorAll(".nav-item").forEach(item => {
   });
 });
 $("logoutBtn").addEventListener("click", async () => { await logoutUser(); window.location.href = ROOT_PATH + "index.html"; });
+$("joinLogoutBtn").addEventListener("click", async () => { await logoutUser(); window.location.href = ROOT_PATH + "index.html"; });

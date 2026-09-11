@@ -41,6 +41,11 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid))
         && get(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)).data.status == "active";
     }
+    function isRoomAdminAfter(roomId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && getAfter(/databases/$(database)/documents/rooms/$(roomId)).data.adminUid == request.auth.uid;
+    }
     function isLandlordOwner(propertyId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/properties/$(propertyId))
@@ -61,8 +66,7 @@ service cloud.firestore {
         && request.resource.data.role in ["roomAdmin", "landlord", "roommate"];
 
       allow read: if isSelf(uid)
-        || (resource.data.roomId != null
-            && exists(/databases/$(database)/documents/rooms/$(resource.data.roomId)/members/$(request.auth.uid)));
+        || (resource.data.roomId != null && isActiveRoomMember(resource.data.roomId));
 
       // Two ways a user doc can be updated, both frontend-blocked from
       // touching role/uid:
@@ -70,13 +74,20 @@ service cloud.firestore {
       //  2. The admin of the room named in the incoming write stamps
       //     `roomId` onto a member's profile right after approving them.
       allow update: if roleUnchanged() && request.resource.data.uid == resource.data.uid
-        && (isSelf(uid) || isRoomAdmin(request.resource.data.roomId));
+        && (
+          (isSelf(uid) && request.resource.data.roomId == resource.data.roomId)
+          || isRoomAdmin(request.resource.data.roomId)
+          || isRoomAdminAfter(request.resource.data.roomId)
+        );
 
       allow delete: if false;
 
       match /notifications/{notifId} {
         allow read, update: if isSelf(uid);
-        allow create: if isSignedIn(); // server-side trigger or peer action creates a notification for another user
+        allow create: if isSignedIn() && (
+          (request.resource.data.roomId != null && isRoomAdmin(request.resource.data.roomId))
+          || (request.resource.data.roomId == null && isSelf(uid))
+        );
         allow delete: if false;
       }
     }
@@ -96,44 +107,51 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     match /rooms/{roomId} {
       allow create: if isSignedIn() && request.resource.data.adminUid == request.auth.uid;
-      allow read: if isRoomMember(roomId);
+      allow read: if isActiveRoomMember(roomId);
       allow update: if isRoomAdmin(roomId)
         && request.resource.data.adminUid == resource.data.adminUid
         && request.resource.data.roomId == resource.data.roomId;
       allow delete: if false;
 
       match /members/{memberUid} {
-        allow read: if isRoomMember(roomId);
-        allow create, update: if isRoomAdmin(roomId);
+        allow read: if isActiveRoomMember(roomId);
+        allow create: if isRoomAdmin(roomId)
+          && request.resource.data.uid == memberUid
+          && request.resource.data.role in ["admin", "roommate"]
+          && request.resource.data.status in ["active", "inactive"];
+        allow update: if isRoomAdmin(roomId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status in ["active", "inactive"];
         allow delete: if false; // deactivate via status field — never destroy financial history
       }
 
       match /categories/{categoryId} {
-        allow read: if isRoomMember(roomId);
+        allow read: if isActiveRoomMember(roomId);
         allow create: if isRoomAdmin(roomId);
         allow update, delete: if false;
       }
 
       match /expenses/{expenseId} {
-        allow read: if isRoomMember(roomId);
+        allow read: if isActiveRoomMember(roomId);
         allow create, update: if isRoomAdmin(roomId); // roommates are read-only, per spec §21
         allow delete: if false; // archive-only, never hard-delete financial records
       }
 
       match /payments/{paymentId} {
-        allow read: if isRoomMember(roomId);
+        allow read: if isActiveRoomMember(roomId);
         allow create: if isRoomAdmin(roomId);
         allow update, delete: if false;
       }
 
       match /settlements/{settlementId} {
-        allow read: if isRoomMember(roomId);
+        allow read: if isActiveRoomMember(roomId);
         allow create: if isRoomAdmin(roomId);
         allow update, delete: if false;
       }
 
       match /notifications/{notifId} {
-        allow read: if isRoomMember(roomId);
+        allow read: if isActiveRoomMember(roomId);
         allow create: if isRoomAdmin(roomId);
         allow update, delete: if false;
       }
@@ -143,7 +161,11 @@ service cloud.firestore {
     // joinRequests/{requestId}
     // ---------------------------------------------------------------------
     match /joinRequests/{requestId} {
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == "pending";
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == "pending"
+        && request.resource.data.roomId is string
+        && request.resource.data.applicant is map;
       allow read: if isSignedIn()
         && (resource.data.uid == request.auth.uid || isRoomAdmin(resource.data.roomId));
       allow update: if isRoomAdmin(resource.data.roomId)

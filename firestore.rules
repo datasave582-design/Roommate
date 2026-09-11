@@ -137,7 +137,7 @@ service cloud.firestore {
       match /expenses/{expenseId} {
         allow read: if isActiveRoomMember(roomId);
         allow create, update: if isRoomAdmin(roomId); // roommates are read-only, per spec §21
-        allow delete: if false; // archive-only, never hard-delete financial records
+        allow delete: if isRoomAdmin(roomId); // Room Admin can remove an expense
       }
 
       match /payments/{paymentId} {

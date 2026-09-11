@@ -1,6 +1,6 @@
 import { auth, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser, getUserProfile } from "../js/auth.js";
-import { formatMoney, showToast, friendlyError, withLoading, escapeHtml, formatDate, monthKey, monthLabel } from "../js/common.js";
+import { formatMoney, showToast, friendlyError, withLoading, escapeHtml, formatDate, monthKey, monthLabel, registerServiceWorker } from "../js/common.js";
 import {
   requestJoinRoom, listenRoom, listenMembers, listenExpenses, listenPayments,
   computeBalances, listenMyNotifications, markNotificationRead, markAllNotificationsRead
@@ -10,6 +10,7 @@ import { db } from "../js/firebase-config.js";
 import { collection, query, where, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
+registerServiceWorker(new URL("../", import.meta.url).href);
 let currentUser = null, myProfile = null, roomId = null, members = [], expenses = [], payments = [];
 let selectedMonth = monthKey();
 

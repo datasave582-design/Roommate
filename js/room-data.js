@@ -15,8 +15,10 @@ export const DEFAULT_CATEGORIES = ["Food/Grocery","Electricity","Internet","Rent
 
 // ---------- Room creation (unique code via transaction) ----------
 export async function createRoom(adminUid, { name, flatNumber, address, city, rent, dueDate, description }) {
-  return runTransaction(db, async (tx) => {
-    let code, codeRef, codeSnap;
+  const roomRef = doc(collection(db, "rooms"));
+  let code;
+  await runTransaction(db, async (tx) => {
+    let codeRef, codeSnap;
     for (let i = 0; i < 8; i++) {
       code = generateRoomCode();
       codeRef = doc(db, "roomCodes", code);
@@ -26,7 +28,6 @@ export async function createRoom(adminUid, { name, flatNumber, address, city, re
     }
     if (!code) throw new Error("Could not generate a unique room code, please try again.");
 
-    const roomRef = doc(collection(db, "rooms"));
     tx.set(roomRef, {
       roomId: roomRef.id,
       adminUid,
@@ -41,12 +42,22 @@ export async function createRoom(adminUid, { name, flatNumber, address, city, re
       updatedAt: serverTimestamp()
     });
     tx.set(codeRef, { roomId: roomRef.id, createdAt: serverTimestamp() });
-    tx.set(doc(db, "rooms", roomRef.id, "members", adminUid), {
-      uid: adminUid, role: "admin", status: "active", joinedAt: serverTimestamp()
-    });
     tx.update(doc(db, "users", adminUid), { roomId: roomRef.id, updatedAt: serverTimestamp() });
-    return roomRef.id;
   });
+
+  // The admin's own member-entry MUST be written as a separate request, after
+  // the transaction above has actually committed. Firestore rules resolve
+  // get()/exists() calls against the database state at the START of a
+  // transaction — they never see writes made earlier in that same
+  // transaction. isRoomAdmin() (used by the members/{uid} create rule) reads
+  // the room via get(), so if this write stayed inside the transaction that
+  // creates the room itself, the rule would always see "room doesn't exist
+  // yet" and reject it — which is exactly what was happening before this fix.
+  await setDoc(doc(db, "rooms", roomRef.id, "members", adminUid), {
+    uid: adminUid, role: "admin", status: "active", joinedAt: serverTimestamp()
+  });
+
+  return roomRef.id;
 }
 
 export async function getRoomByAdmin(adminUid) {
@@ -72,14 +83,40 @@ export function listenRoom(roomId, cb) {
 
 // ---------- Join requests ----------
 export async function requestJoinRoom(uid, code) {
-  const codeSnap = await getDoc(doc(db, "roomCodes", code.trim().toUpperCase()));
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) throw { code: "not-found", message: "Please enter a room code." };
+
+  const codeSnap = await getDoc(doc(db, "roomCodes", normalizedCode));
   if (!codeSnap.exists()) throw { code: "not-found", message: "Invalid room code." };
+
   const roomId = codeSnap.data().roomId;
-  const existing = await getDocs(query(collection(db, "joinRequests"),
-    where("uid", "==", uid), where("roomId", "==", roomId), where("status", "==", "pending")));
+  if (!roomId) throw { code: "not-found", message: "Invalid room code." };
+
+  // The applicant can read their own profile. Copy the small public-facing
+  // fields into the request so the room admin does not need permission to
+  // read an unapproved user's private profile.
+  const userSnap = await getDoc(doc(db, "users", uid));
+  if (!userSnap.exists()) throw { code: "not-found", message: "Account profile not found." };
+  const profile = userSnap.data();
+
+  const existing = await getDocs(query(
+    collection(db, "joinRequests"),
+    where("uid", "==", uid),
+    where("roomId", "==", roomId),
+    where("status", "==", "pending")
+  ));
   if (!existing.empty) return existing.docs[0].id;
+
   const ref = await addDoc(collection(db, "joinRequests"), {
-    uid, roomId, status: "pending", createdAt: serverTimestamp()
+    uid,
+    roomId,
+    status: "pending",
+    applicant: {
+      name: String(profile.name || "").slice(0, 100),
+      phone: String(profile.phone || "").slice(0, 20),
+      email: String(profile.email || "").slice(0, 160)
+    },
+    createdAt: serverTimestamp()
   });
   return ref.id;
 }
@@ -90,8 +127,11 @@ export function listenPendingRequests(roomId, cb) {
     const reqs = [];
     for (const d of snap.docs) {
       const data = d.data();
-      const userSnap = await getDoc(doc(db, "users", data.uid));
-      reqs.push({ id: d.id, ...data, user: userSnap.exists() ? userSnap.data() : null });
+      reqs.push({
+        id: d.id,
+        ...data,
+        user: data.applicant || { name: "Unknown", phone: "" }
+      });
     }
     cb(reqs);
   });
@@ -105,7 +145,7 @@ export async function approveJoinRequest(requestId, roomId, uid) {
   batch.update(doc(db, "joinRequests", requestId), { status: "approved", resolvedAt: serverTimestamp() });
   batch.update(doc(db, "users", uid), { roomId, updatedAt: serverTimestamp() });
   await batch.commit();
-  await addNotification(uid, { title: "Request Approved 🎉", message: "You've been added to the room.", type: "system", relatedId: roomId });
+  await addNotification(uid, { title: "Request Approved 🎉", message: "You've been added to the room.", type: "system", relatedId: roomId, roomId });
 }
 
 export async function rejectJoinRequest(requestId) {
@@ -190,9 +230,9 @@ export function listenPayments(roomId, monthKey, cb) {
 }
 
 // ---------- Balance calculation (client-side, derived — never stored as editable) ----------
-export function computeBalances(members, expenses, payments) {
+export function computeBalances(members, expenses, payments, settlements = []) {
   const balances = {};
-  members.forEach(m => { balances[m.uid] = { share: 0, paid: 0, name: m.profile.name }; });
+  members.forEach(m => { balances[m.uid] = { share: 0, paid: 0, name: m.profile?.name || "Unknown" }; });
 
   expenses.filter(e => !e.archived).forEach(e => {
     if (e.expenseType === "personal") {
@@ -206,6 +246,15 @@ export function computeBalances(members, expenses, payments) {
   });
   payments.forEach(p => {
     if (balances[p.paidBy]) balances[p.paidBy].paid += p.amountPaise;
+  });
+
+  // A completed settlement is a real transfer of money: it reduces the
+  // debtor's outstanding amount and the creditor's outstanding credit.
+  settlements.filter(s => s.status === "completed").forEach(s => {
+    const amount = Number(s.amountPaise);
+    if (!Number.isSafeInteger(amount) || amount <= 0) return;
+    if (balances[s.fromUid]) balances[s.fromUid].paid += amount;
+    if (balances[s.toUid]) balances[s.toUid].paid -= amount;
   });
 
   return Object.entries(balances).map(([uid, v]) => ({
@@ -245,15 +294,16 @@ export function listenSettlements(roomId, cb) {
 }
 
 // ---------- Notifications ----------
-export async function addNotification(recipientUid, { title, message, type, relatedId }) {
+export async function addNotification(recipientUid, { title, message, type, relatedId, roomId: notificationRoomId }) {
   await addDoc(collection(db, "users", recipientUid, "notifications"), {
     title, message, type: type || "system", relatedId: relatedId || null,
+    roomId: notificationRoomId || null,
     read: false, createdAt: serverTimestamp()
   });
 }
 export async function notifyRoom(roomId, members, payload, excludeUid) {
   const targets = members.filter(m => m.status === "active" && m.uid !== excludeUid);
-  await Promise.all(targets.map(m => addNotification(m.uid, payload)));
+  await Promise.all(targets.map(m => addNotification(m.uid, { ...payload, roomId })));
 }
 export function listenMyNotifications(uid, cb) {
   const q = query(collection(db, "users", uid, "notifications"), orderBy("createdAt", "desc"), limit(30));

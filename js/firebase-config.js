@@ -29,10 +29,22 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence).catch(() => {});
 
-// Offline-capable Firestore cache so PWA has "useful offline experience"
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) })
-});
+// Firestore: prefer persistent cache, but NEVER let an optional cache feature
+// prevent the entire app from loading. Some browsers/webviews and older cached
+// SDK states can reject the persistence configuration. In that case fall back
+// to the normal Firestore instance.
+let dbInstance;
+try {
+  dbInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentSingleTabManager()
+    })
+  });
+} catch (err) {
+  console.warn("Firestore persistent cache unavailable; using normal Firestore:", err);
+  dbInstance = getFirestore(app);
+}
+export const db = dbInstance;
 
 export let analytics = null;
 isSupported().then((ok) => { if (ok) analytics = getAnalytics(app); }).catch(() => {});

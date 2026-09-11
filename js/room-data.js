@@ -14,7 +14,7 @@ import { generateRoomCode } from "./common.js";
 export const DEFAULT_CATEGORIES = ["Food/Grocery","Electricity","Internet","Rent","Water","Cleaning","Household","Travel","Medicine","Other"];
 
 // ---------- Room creation (unique code via transaction) ----------
-export async function createRoom(adminUid, { name, flatNumber, address, city, rent, dueDate, description }) {
+export async function createRoom(adminUid, { name, flatNumber, address, city, rent, dueDate, description, landlordUid }) {
   if (!adminUid) throw { code: "auth/invalid-user", message: "Please log in again." };
   if (!String(name || "").trim()) throw { code: "invalid-argument", message: "Room name is required." };
 
@@ -41,6 +41,7 @@ export async function createRoom(adminUid, { name, flatNumber, address, city, re
           monthlyRent: Number(rent || 0),
           rentDueDate: dueDate || null,
           description: String(description || "").trim(),
+          landlordUid: landlordUid || null,
           code,
           memberCount: 1,
           status: "active",
@@ -67,6 +68,16 @@ export async function createRoom(adminUid, { name, flatNumber, address, city, re
   if (!code) throw new Error("Room creation failed.");
   return roomRef.id;
 }
+
+export async function attachLandlordToRoom(roomId, adminUid, landlordUid) {
+  if (!roomId || !adminUid || !landlordUid) throw { code: "invalid-argument", message: "Invalid connection details." };
+  const snap = await getDoc(doc(db, "rooms", roomId));
+  if (!snap.exists() || snap.data().adminUid !== adminUid) throw { code: "permission-denied", message: "You are not the admin of this room." };
+  if (!isStringId(landlordUid)) throw { code: "invalid-argument", message: "Invalid landlord." };
+  await updateDoc(doc(db, "rooms", roomId), { landlordUid, updatedAt: serverTimestamp() });
+}
+
+function isStringId(value) { return typeof value === "string" && value.length > 0; }
 
 export async function getRoomByAdmin(adminUid) {
   const q = query(collection(db, "rooms"), where("adminUid", "==", adminUid), limit(1));
@@ -187,6 +198,93 @@ export function listenMembers(roomId, cb) {
 
 export async function setMemberStatus(roomId, uid, status) {
   await updateDoc(doc(db, "rooms", roomId, "members", uid), { status });
+}
+
+// ---------- Landlord ↔ Room Admin connection ----------
+export async function ensureLandlordCode(landlordUid) {
+  if (!landlordUid) throw { code: "auth/invalid-user", message: "Please log in again." };
+  const profileRef = doc(db, "users", landlordUid);
+  const snap = await getDoc(profileRef);
+  if (!snap.exists() || snap.data().role !== "landlord") throw { code: "permission-denied", message: "Landlord profile not found." };
+  const existing = snap.data().landlordCode;
+  if (existing) return existing;
+  for (let i = 0; i < 12; i++) {
+    const code = generateRoomCode();
+    const codeRef = doc(db, "landlordCodes", code);
+    const codeSnap = await getDoc(codeRef);
+    if (codeSnap.exists()) continue;
+    await setDoc(codeRef, { landlordUid, createdAt: serverTimestamp() });
+    await updateDoc(profileRef, { landlordCode: code, updatedAt: serverTimestamp() });
+    return code;
+  }
+  throw { code: "already-exists", message: "Could not generate a landlord code. Please try again." };
+}
+export async function getLandlordConnection(adminUid) {
+  const snap = await getDoc(doc(db, "landlordConnections", adminUid));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+export async function requestLandlordConnection(adminUid, code) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!normalized) throw { code: "invalid-argument", message: "Enter the Makan Malik connection code." };
+  const codeSnap = await getDoc(doc(db, "landlordCodes", normalized));
+  if (!codeSnap.exists()) throw { code: "not-found", message: "Invalid Makan Malik code." };
+  const landlordUid = codeSnap.data().landlordUid;
+  if (!landlordUid || landlordUid === adminUid) throw { code: "invalid-argument", message: "Invalid landlord code." };
+  const landlordSnap = await getDoc(doc(db, "users", landlordUid));
+  if (!landlordSnap.exists() || landlordSnap.data().role !== "landlord") throw { code: "not-found", message: "Makan Malik account not found." };
+  const ref = doc(db, "propertyRequests", adminUid);
+  const existing = await getDoc(ref);
+  if (existing.exists() && existing.data().status === "pending") return existing.id;
+  await setDoc(ref, {
+    requestedBy: adminUid, landlordUid, status: "pending", requestType: "roomAdminConnection",
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+  });
+  return ref.id;
+}
+export function listenMyLandlordRequest(adminUid, cb) {
+  return onSnapshot(doc(db, "propertyRequests", adminUid), snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null));
+}
+export function listenLandlordRequests(landlordUid, cb) {
+  const q = query(collection(db, "propertyRequests"), where("landlordUid", "==", landlordUid), where("status", "==", "pending"));
+  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+}
+export async function approveLandlordRequest(requestId, adminUid, landlordUid) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, "propertyRequests", requestId), { status: "approved", resolvedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  batch.set(doc(db, "landlordConnections", adminUid), { adminUid, landlordUid, status: "approved", buildingId: null, approvedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  batch.set(doc(db, "users", adminUid), { landlordUid, landlordConnectionStatus: "approved", updatedAt: serverTimestamp() }, { merge: true });
+  await batch.commit();
+  await addNotification(adminUid, { title: "Makan Malik Approved ✅", message: "Your Room Admin account is now connected to the Makan Malik.", type: "landlord", relatedId: requestId });
+}
+export async function rejectLandlordRequest(requestId) {
+  await updateDoc(doc(db, "propertyRequests", requestId), { status: "rejected", resolvedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+}
+export function listenLandlordConnections(landlordUid, cb) {
+  const q = query(collection(db, "landlordConnections"), where("landlordUid", "==", landlordUid), where("status", "==", "approved"));
+  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+}
+export async function assignLandlordAdminBuilding(adminUid, landlordUid, buildingId) {
+  const ref = doc(db, "landlordConnections", adminUid);
+  const snap = await getDoc(ref);
+  if (!snap.exists() || snap.data().landlordUid !== landlordUid || snap.data().status !== "approved") throw { code: "permission-denied", message: "Admin is not connected." };
+  if (buildingId) {
+    const b = await getDoc(doc(db, "properties", buildingId));
+    if (!b.exists() || b.data().ownerUid !== landlordUid) throw { code: "permission-denied", message: "Invalid building." };
+  }
+  await updateDoc(ref, { buildingId: buildingId || null, updatedAt: serverTimestamp() });
+}
+export async function sendLandlordNotification(landlordUid, adminUids, { title, message, type }) {
+  const unique = [...new Set((adminUids || []).filter(Boolean))];
+  if (!unique.length) throw { code: "invalid-argument", message: "No Room Admin selected." };
+  if (!title || !message) throw { code: "invalid-argument", message: "Title and message are required." };
+  const batch = writeBatch(db);
+  for (const adminUid of unique) {
+    const c = await getDoc(doc(db, "landlordConnections", adminUid));
+    if (!c.exists() || c.data().landlordUid !== landlordUid || c.data().status !== "approved") throw { code: "permission-denied", message: "One selected Admin is not connected." };
+    const ref = doc(collection(db, "users", adminUid, "notifications"));
+    batch.set(ref, { title: String(title).slice(0,80), message: String(message).slice(0,500), type: type || "landlord", relatedId: null, roomId: null, read: false, createdAt: serverTimestamp() });
+  }
+  await batch.commit();
 }
 
 // ---------- Categories ----------

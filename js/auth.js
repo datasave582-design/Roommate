@@ -3,7 +3,7 @@ import { auth, db, ROOT_PATH } from "./firebase-config.js";
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
   sendPasswordResetEmail, onAuthStateChanged, updateProfile, deleteUser,
-  GoogleAuthProvider, signInWithPopup
+  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
   doc, setDoc, getDoc, serverTimestamp
@@ -16,8 +16,8 @@ import {
  * which profile gets created; it grants no privilege by itself.
  */
 export async function registerUser({ name, email, mobile, password, role }) {
-  if (!["roomAdmin", "roommate"].includes(role)) {
-    throw { code: "auth/operation-not-allowed", message: "This account type is not available yet." };
+  if (!["roomAdmin", "landlord", "roommate"].includes(role)) {
+    throw { code: "auth/operation-not-allowed", message: "This account type is not available." };
   }
 
   const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -48,28 +48,56 @@ export async function loginUser(email, password) {
   return cred.user;
 }
 
+export async function createGoogleProfile(user, role) {
+  if (!["roomAdmin", "landlord", "roommate"].includes(role)) {
+    throw { code: "auth/operation-not-allowed", message: "Please select a valid account type." };
+  }
+  await setDoc(doc(db, "users", user.uid), {
+    uid: user.uid,
+    name: user.displayName || "",
+    email: user.email || "",
+    phone: user.phoneNumber || "",
+    photoURL: user.photoURL || "",
+    role,
+    status: "active",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return getUserProfile(user.uid);
+}
+
 export async function loginWithGoogle(role) {
   if (!["roomAdmin", "landlord", "roommate"].includes(role)) {
-    throw { code: "auth/operation-not-allowed", message: "Please select an account type first." };
+    throw { code: "auth/operation-not-allowed", message: "Please select a login type first." };
   }
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  const cred = await signInWithPopup(auth, provider);
-  const existing = await getUserProfile(cred.user.uid);
-  if (!existing) {
-    await setDoc(doc(db, "users", cred.user.uid), {
-      uid: cred.user.uid,
-      name: cred.user.displayName || "Google User",
-      email: cred.user.email || "",
-      phone: cred.user.phoneNumber || "",
-      photoURL: cred.user.photoURL || "",
-      role,
-      status: "active",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
+  try {
+    const cred = await signInWithPopup(auth, provider);
+    return cred.user;
+  } catch (err) {
+    // Mobile browsers / embedded WebViews may block popups. Redirect is the
+    // reliable fallback; the selected role is kept until the redirect returns.
+    if (["auth/popup-blocked", "auth/popup-cancelled-by-user", "auth/operation-not-supported-in-this-environment"].includes(err.code)) {
+      localStorage.setItem("roommate.pendingGoogleRole", role);
+      await signInWithRedirect(auth, provider);
+      throw { code: "auth/popup-redirect", message: "Redirecting to Google…" };
+    }
+    throw err;
   }
-  return { user: cred.user, profile: existing || await getUserProfile(cred.user.uid) };
+}
+
+export async function finishGoogleRedirect() {
+  const result = await getRedirectResult(auth);
+  if (!result || !result.user) return null;
+  const role = localStorage.getItem("roommate.pendingGoogleRole");
+  localStorage.removeItem("roommate.pendingGoogleRole");
+  let profile = await getUserProfile(result.user.uid);
+  if (!profile) {
+    if (!role) return result.user;
+    await createGoogleProfile(result.user, role);
+  }
+  return result.user;
 }
 
 export async function logoutUser() {

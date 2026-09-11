@@ -8,7 +8,7 @@ import {
   collection, doc, addDoc, updateDoc, getDoc, getDocs, setDoc, deleteField,
   query, where, orderBy, limit, startAfter, onSnapshot, serverTimestamp,
   runTransaction, writeBatch
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import { generateRoomCode } from "./common.js";
 
 export const DEFAULT_CATEGORIES = ["Food/Grocery","Electricity","Internet","Rent","Water","Cleaning","Household","Travel","Medicine","Other"];

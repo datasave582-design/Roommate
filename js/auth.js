@@ -2,11 +2,12 @@
 import { auth, db, ROOT_PATH } from "./firebase-config.js";
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
-  sendPasswordResetEmail, onAuthStateChanged, updateProfile, deleteUser
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+  sendPasswordResetEmail, onAuthStateChanged, updateProfile, deleteUser,
+  GoogleAuthProvider, signInWithPopup
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
   doc, setDoc, getDoc, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 /**
  * Register a new user. `role` is written ONCE at account creation and is
@@ -45,6 +46,30 @@ export async function registerUser({ name, email, mobile, password, role }) {
 export async function loginUser(email, password) {
   const cred = await signInWithEmailAndPassword(auth, email, password);
   return cred.user;
+}
+
+export async function loginWithGoogle(role) {
+  if (!["roomAdmin", "landlord", "roommate"].includes(role)) {
+    throw { code: "auth/operation-not-allowed", message: "Please select an account type first." };
+  }
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  const cred = await signInWithPopup(auth, provider);
+  const existing = await getUserProfile(cred.user.uid);
+  if (!existing) {
+    await setDoc(doc(db, "users", cred.user.uid), {
+      uid: cred.user.uid,
+      name: cred.user.displayName || "Google User",
+      email: cred.user.email || "",
+      phone: cred.user.phoneNumber || "",
+      photoURL: cred.user.photoURL || "",
+      role,
+      status: "active",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+  }
+  return { user: cred.user, profile: existing || await getUserProfile(cred.user.uid) };
 }
 
 export async function logoutUser() {

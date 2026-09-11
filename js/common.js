@@ -44,6 +44,8 @@ export function friendlyError(err) {
     "auth/weak-password": "Password should be at least 6 characters.",
     "auth/too-many-requests": "Too many attempts. Please try again later.",
     "auth/network-request-failed": "Network error. Please check your connection.",
+    "auth/operation-not-allowed": "This account type is not available yet.",
+    "auth/admin-restricted-operation": "This action is currently restricted by the Firebase project settings.",
     "permission-denied": "You don't have permission to perform this action.",
     "not-found": "The requested item could not be found."
   };
@@ -142,4 +144,20 @@ export function monthKey(date = new Date()) {
 export function monthLabel(key) {
   const [y, m] = key.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+}
+
+
+/**
+ * Register the PWA service worker from the same app root. Safe to call on
+ * every page; browsers reuse an existing registration.
+ */
+export async function registerServiceWorker(rootPath) {
+  if (!("serviceWorker" in navigator)) return null;
+  try {
+    const swUrl = new URL("service-worker.js", rootPath).href;
+    return await navigator.serviceWorker.register(swUrl, { scope: rootPath });
+  } catch (err) {
+    console.warn("Service worker registration failed:", err);
+    return null;
+  }
 }

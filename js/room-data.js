@@ -83,14 +83,40 @@ export function listenRoom(roomId, cb) {
 
 // ---------- Join requests ----------
 export async function requestJoinRoom(uid, code) {
-  const codeSnap = await getDoc(doc(db, "roomCodes", code.trim().toUpperCase()));
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) throw { code: "not-found", message: "Please enter a room code." };
+
+  const codeSnap = await getDoc(doc(db, "roomCodes", normalizedCode));
   if (!codeSnap.exists()) throw { code: "not-found", message: "Invalid room code." };
+
   const roomId = codeSnap.data().roomId;
-  const existing = await getDocs(query(collection(db, "joinRequests"),
-    where("uid", "==", uid), where("roomId", "==", roomId), where("status", "==", "pending")));
+  if (!roomId) throw { code: "not-found", message: "Invalid room code." };
+
+  // The applicant can read their own profile. Copy the small public-facing
+  // fields into the request so the room admin does not need permission to
+  // read an unapproved user's private profile.
+  const userSnap = await getDoc(doc(db, "users", uid));
+  if (!userSnap.exists()) throw { code: "not-found", message: "Account profile not found." };
+  const profile = userSnap.data();
+
+  const existing = await getDocs(query(
+    collection(db, "joinRequests"),
+    where("uid", "==", uid),
+    where("roomId", "==", roomId),
+    where("status", "==", "pending")
+  ));
   if (!existing.empty) return existing.docs[0].id;
+
   const ref = await addDoc(collection(db, "joinRequests"), {
-    uid, roomId, status: "pending", createdAt: serverTimestamp()
+    uid,
+    roomId,
+    status: "pending",
+    applicant: {
+      name: String(profile.name || "").slice(0, 100),
+      phone: String(profile.phone || "").slice(0, 20),
+      email: String(profile.email || "").slice(0, 160)
+    },
+    createdAt: serverTimestamp()
   });
   return ref.id;
 }
@@ -101,8 +127,11 @@ export function listenPendingRequests(roomId, cb) {
     const reqs = [];
     for (const d of snap.docs) {
       const data = d.data();
-      const userSnap = await getDoc(doc(db, "users", data.uid));
-      reqs.push({ id: d.id, ...data, user: userSnap.exists() ? userSnap.data() : null });
+      reqs.push({
+        id: d.id,
+        ...data,
+        user: data.applicant || { name: "Unknown", phone: "" }
+      });
     }
     cb(reqs);
   });

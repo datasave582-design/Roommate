@@ -12,7 +12,19 @@
 </head>
 <body>
 
-<div id="loader" class="center-loader"><div class="dim-spinner"></div></div>
+<div id="loader" class="center-loader" role="status" aria-live="polite" aria-label="Loading">
+  <div class="dim-spinner"></div>
+</div>
+<script>
+  // Hard safety net: if a CDN/Firebase module fails before the module script
+  // can execute, never leave the user staring at an endless spinner.
+  window.__roommateBootTimer = setTimeout(function () {
+    var loader = document.getElementById("loader");
+    if (loader) loader.classList.add("hidden");
+    var landing = document.getElementById("view-landing");
+    if (landing) landing.classList.remove("hidden");
+  }, 7000);
+</script>
 
 <!-- ===== Landing / role select ===== -->
 <div id="view-landing" class="landing hidden">
@@ -71,13 +83,13 @@
 </div>
 
 <script type="module">
-import { auth, db, ROOT_PATH } from "./js/firebase-config.js";
+import { auth, ROOT_PATH } from "./js/firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import { registerUser, loginUser, resetPassword, getUserProfile } from "./js/auth.js";
 import { friendlyError, validateEmail, validateMobile, withLoading, showToast, registerServiceWorker } from "./js/common.js";
 
 const $ = (id) => document.getElementById(id);
-registerServiceWorker(new URL("./", import.meta.url).href);
+registerServiceWorker(new URL("./", import.meta.url).href).catch(() => {});
 const dashFor = { roomAdmin: ROOT_PATH + "admin/dashboard.html", landlord: ROOT_PATH + "landlord/dashboard.html", roommate: ROOT_PATH + "roommate/dashboard.html" };
 const roleLabel = { roomAdmin: "Room Admin", landlord: "Makan Malik", roommate: "Roommate" };
 
@@ -88,16 +100,32 @@ function show(view) {
 }
 
 // ---- Boot: if already logged in, skip straight to their dashboard ----
-onAuthStateChanged(auth, async (user) => {
-  if (user) {
-    const profile = await getUserProfile(user.uid);
-    if (profile && dashFor[profile.role]) {
-      window.location.href = dashFor[profile.role];
-      return;
-    }
-  }
+let bootFinished = false;
+function finishBoot() {
+  if (bootFinished) return;
+  bootFinished = true;
+  clearTimeout(window.__roommateBootTimer);
   $("loader").classList.add("hidden");
   show("landing");
+}
+
+onAuthStateChanged(auth, async (user) => {
+  try {
+    if (user) {
+      const profile = await Promise.race([
+        getUserProfile(user.uid),
+        new Promise(resolve => setTimeout(() => resolve(null), 5000))
+      ]);
+      if (profile && dashFor[profile.role]) {
+        clearTimeout(window.__roommateBootTimer);
+        window.location.replace(dashFor[profile.role]);
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn("Auth boot check failed:", err);
+  }
+  finishBoot();
 });
 
 document.querySelectorAll(".role-card").forEach(card => {

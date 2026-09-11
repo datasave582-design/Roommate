@@ -245,8 +245,8 @@ export function listenMyLandlordRequest(adminUid, cb) {
   return onSnapshot(doc(db, "propertyRequests", adminUid), snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null));
 }
 export function listenLandlordRequests(landlordUid, cb) {
-  const q = query(collection(db, "propertyRequests"), where("landlordUid", "==", landlordUid), where("status", "==", "pending"));
-  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  const q = query(collection(db, "propertyRequests"), where("landlordUid", "==", landlordUid));
+  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.status === "pending")));
 }
 export async function approveLandlordRequest(requestId, adminUid, landlordUid) {
   const batch = writeBatch(db);
@@ -260,8 +260,8 @@ export async function rejectLandlordRequest(requestId) {
   await updateDoc(doc(db, "propertyRequests", requestId), { status: "rejected", resolvedAt: serverTimestamp(), updatedAt: serverTimestamp() });
 }
 export function listenLandlordConnections(landlordUid, cb) {
-  const q = query(collection(db, "landlordConnections"), where("landlordUid", "==", landlordUid), where("status", "==", "approved"));
-  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  const q = query(collection(db, "landlordConnections"), where("landlordUid", "==", landlordUid));
+  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.status === "approved")));
 }
 export async function assignLandlordAdminBuilding(adminUid, landlordUid, buildingId) {
   const ref = doc(db, "landlordConnections", adminUid);

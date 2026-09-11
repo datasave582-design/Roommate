@@ -2,7 +2,7 @@
 import { auth, db, ROOT_PATH } from "./firebase-config.js";
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
-  sendPasswordResetEmail, onAuthStateChanged, updateProfile, deleteUser
+  sendPasswordResetEmail, onAuthStateChanged, updateProfile
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {
   doc, setDoc, getDoc, serverTimestamp
@@ -15,31 +15,20 @@ import {
  * which profile gets created; it grants no privilege by itself.
  */
 export async function registerUser({ name, email, mobile, password, role }) {
-  if (!["roomAdmin", "roommate"].includes(role)) {
-    throw { code: "auth/operation-not-allowed", message: "This account type is not available yet." };
-  }
-
   const cred = await createUserWithEmailAndPassword(auth, email, password);
-  try {
-    await updateProfile(cred.user, { displayName: name });
-    await setDoc(doc(db, "users", cred.user.uid), {
-      uid: cred.user.uid,
-      name,
-      email,
-      phone: mobile,
-      photoURL: "",
-      role,
-      status: "active",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    return cred.user;
-  } catch (err) {
-    // Do not leave a Firebase Auth account behind when its profile could
-    // not be created. The user can retry registration cleanly.
-    try { await deleteUser(cred.user); } catch (_) {}
-    throw err;
-  }
+  await updateProfile(cred.user, { displayName: name });
+  await setDoc(doc(db, "users", cred.user.uid), {
+    uid: cred.user.uid,
+    name,
+    email,
+    phone: mobile,
+    photoURL: "",
+    role,               // roomAdmin | landlord | roommate
+    status: "active",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return cred.user;
 }
 
 export async function loginUser(email, password) {

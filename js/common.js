@@ -44,8 +44,6 @@ export function friendlyError(err) {
     "auth/weak-password": "Password should be at least 6 characters.",
     "auth/too-many-requests": "Too many attempts. Please try again later.",
     "auth/network-request-failed": "Network error. Please check your connection.",
-    "auth/operation-not-allowed": "This account type is not available yet.",
-    "auth/admin-restricted-operation": "This action is currently restricted by the Firebase project settings.",
     "permission-denied": "You don't have permission to perform this action.",
     "not-found": "The requested item could not be found."
   };
@@ -94,21 +92,6 @@ export function formatDate(ts) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-// ---- Date <input type="date"> helpers ----
-// new Date("YYYY-MM-DD") parses as UTC midnight, which can land on the wrong
-// calendar day once converted back to local time for users west of UTC.
-// These helpers always work in local time so the date picked is the date saved.
-export function dateInputToDate(str) {
-  if (!str) return new Date();
-  const [y, m, d] = str.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-export function dateToInputValue(ts) {
-  const d = ts && ts.toDate ? ts.toDate() : new Date(ts);
-  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 // ---- PWA: register service worker + show an install affordance only when the browser actually offers one ----
 // Computed from this file's own location (always "<root>/js/common.js" on every
 // page) so registration works whether the site is deployed at a domain root or
@@ -144,20 +127,4 @@ export function monthKey(date = new Date()) {
 export function monthLabel(key) {
   const [y, m] = key.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-}
-
-
-/**
- * Register the PWA service worker from the same app root. Safe to call on
- * every page; browsers reuse an existing registration.
- */
-export async function registerServiceWorker(rootPath) {
-  if (!("serviceWorker" in navigator)) return null;
-  try {
-    const swUrl = new URL("service-worker.js", rootPath).href;
-    return await navigator.serviceWorker.register(swUrl, { scope: rootPath });
-  } catch (err) {
-    console.warn("Service worker registration failed:", err);
-    return null;
-  }
 }

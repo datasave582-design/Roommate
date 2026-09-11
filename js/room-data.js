@@ -15,10 +15,8 @@ export const DEFAULT_CATEGORIES = ["Food/Grocery","Electricity","Internet","Rent
 
 // ---------- Room creation (unique code via transaction) ----------
 export async function createRoom(adminUid, { name, flatNumber, address, city, rent, dueDate, description }) {
-  const roomRef = doc(collection(db, "rooms"));
-  let code;
-  await runTransaction(db, async (tx) => {
-    let codeRef, codeSnap;
+  return runTransaction(db, async (tx) => {
+    let code, codeRef, codeSnap;
     for (let i = 0; i < 8; i++) {
       code = generateRoomCode();
       codeRef = doc(db, "roomCodes", code);
@@ -28,6 +26,7 @@ export async function createRoom(adminUid, { name, flatNumber, address, city, re
     }
     if (!code) throw new Error("Could not generate a unique room code, please try again.");
 
+    const roomRef = doc(collection(db, "rooms"));
     tx.set(roomRef, {
       roomId: roomRef.id,
       adminUid,
@@ -42,22 +41,12 @@ export async function createRoom(adminUid, { name, flatNumber, address, city, re
       updatedAt: serverTimestamp()
     });
     tx.set(codeRef, { roomId: roomRef.id, createdAt: serverTimestamp() });
+    tx.set(doc(db, "rooms", roomRef.id, "members", adminUid), {
+      uid: adminUid, role: "admin", status: "active", joinedAt: serverTimestamp()
+    });
     tx.update(doc(db, "users", adminUid), { roomId: roomRef.id, updatedAt: serverTimestamp() });
+    return roomRef.id;
   });
-
-  // The admin's own member-entry MUST be written as a separate request, after
-  // the transaction above has actually committed. Firestore rules resolve
-  // get()/exists() calls against the database state at the START of a
-  // transaction — they never see writes made earlier in that same
-  // transaction. isRoomAdmin() (used by the members/{uid} create rule) reads
-  // the room via get(), so if this write stayed inside the transaction that
-  // creates the room itself, the rule would always see "room doesn't exist
-  // yet" and reject it — which is exactly what was happening before this fix.
-  await setDoc(doc(db, "rooms", roomRef.id, "members", adminUid), {
-    uid: adminUid, role: "admin", status: "active", joinedAt: serverTimestamp()
-  });
-
-  return roomRef.id;
 }
 
 export async function getRoomByAdmin(adminUid) {
@@ -83,40 +72,14 @@ export function listenRoom(roomId, cb) {
 
 // ---------- Join requests ----------
 export async function requestJoinRoom(uid, code) {
-  const normalizedCode = String(code || "").trim().toUpperCase();
-  if (!normalizedCode) throw { code: "not-found", message: "Please enter a room code." };
-
-  const codeSnap = await getDoc(doc(db, "roomCodes", normalizedCode));
+  const codeSnap = await getDoc(doc(db, "roomCodes", code.trim().toUpperCase()));
   if (!codeSnap.exists()) throw { code: "not-found", message: "Invalid room code." };
-
   const roomId = codeSnap.data().roomId;
-  if (!roomId) throw { code: "not-found", message: "Invalid room code." };
-
-  // The applicant can read their own profile. Copy the small public-facing
-  // fields into the request so the room admin does not need permission to
-  // read an unapproved user's private profile.
-  const userSnap = await getDoc(doc(db, "users", uid));
-  if (!userSnap.exists()) throw { code: "not-found", message: "Account profile not found." };
-  const profile = userSnap.data();
-
-  const existing = await getDocs(query(
-    collection(db, "joinRequests"),
-    where("uid", "==", uid),
-    where("roomId", "==", roomId),
-    where("status", "==", "pending")
-  ));
+  const existing = await getDocs(query(collection(db, "joinRequests"),
+    where("uid", "==", uid), where("roomId", "==", roomId), where("status", "==", "pending")));
   if (!existing.empty) return existing.docs[0].id;
-
   const ref = await addDoc(collection(db, "joinRequests"), {
-    uid,
-    roomId,
-    status: "pending",
-    applicant: {
-      name: String(profile.name || "").slice(0, 100),
-      phone: String(profile.phone || "").slice(0, 20),
-      email: String(profile.email || "").slice(0, 160)
-    },
-    createdAt: serverTimestamp()
+    uid, roomId, status: "pending", createdAt: serverTimestamp()
   });
   return ref.id;
 }
@@ -127,11 +90,8 @@ export function listenPendingRequests(roomId, cb) {
     const reqs = [];
     for (const d of snap.docs) {
       const data = d.data();
-      reqs.push({
-        id: d.id,
-        ...data,
-        user: data.applicant || { name: "Unknown", phone: "" }
-      });
+      const userSnap = await getDoc(doc(db, "users", data.uid));
+      reqs.push({ id: d.id, ...data, user: userSnap.exists() ? userSnap.data() : null });
     }
     cb(reqs);
   });

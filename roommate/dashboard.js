@@ -5,9 +5,9 @@ import {
   requestJoinRoom, listenRoom, listenMembers, listenExpenses, listenPayments,
   computeBalances, listenSettlements, listenMyNotifications, markNotificationRead, markAllNotificationsRead
 } from "../js/room-data.js";
-import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import { db } from "../js/firebase-config.js";
-import { collection, query, where, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
 registerServiceWorker(new URL("../", import.meta.url).href);

@@ -2,7 +2,7 @@ import { auth, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser } from "../js/auth.js";
 import {
   formatMoney, rupeesToPaise, showToast, friendlyError, withLoading,
-  escapeHtml, formatDate, monthKey, monthLabel, dateInputToDate, dateToInputValue
+  escapeHtml, formatDate, monthKey, monthLabel, dateInputToDate, dateToInputValue, registerServiceWorker
 } from "../js/common.js";
 import {
   DEFAULT_CATEGORIES, createRoom, getRoomById, listenRoom,
@@ -15,6 +15,7 @@ import {
 } from "../js/room-data.js";
 
 const $ = (id) => document.getElementById(id);
+registerServiceWorker(new URL("../", import.meta.url).href);
 let currentUser = null, roomId = null, roomData = null;
 let members = [], categories = [...DEFAULT_CATEGORIES], expenses = [], payments = [], settlements = [];
 let selectedMonth = monthKey();

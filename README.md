@@ -14,7 +14,7 @@
 - Money handled in integer paise everywhere (no floating-point drift)
 - Firestore Security Rules are the real authorization layer — role, adminUid,
   and ownerUid can never be changed from the browser
-- PWA shell (manifest + service worker) with offline app-shell caching; browser install UI appears when supported
+- PWA shell (manifest + service worker) with install prompt and offline app-shell caching
 
 **Not yet built (Phase 2):** Landlord/Makan Malik portal (properties, rooms,
 tenants, rent, notices), CSV/print reports, FCM push notifications, room-code

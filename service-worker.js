@@ -2,7 +2,7 @@
 // Firestore's own offline-capable SDK (see firebase-config.js persistentLocalCache);
 // this worker never intercepts Firestore/Auth network calls, so a write only
 // ever reports success once Firebase has actually confirmed it (spec §59).
-const CACHE_NAME = "roommate-shell-v2";
+const CACHE_NAME = "roommate-shell-v1";
 // Relative (no leading "/") so these resolve against this file's own location —
 // works whether the site is deployed at a domain root or under a sub-path
 // (e.g. GitHub Project Pages: username.github.io/repo-name/).

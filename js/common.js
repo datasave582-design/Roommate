@@ -44,7 +44,7 @@ export function friendlyError(err) {
     "auth/weak-password": "Password should be at least 6 characters.",
     "auth/too-many-requests": "Too many attempts. Please try again later.",
     "auth/network-request-failed": "Network error. Please check your connection.",
-    "auth/operation-not-allowed": "This account type is not available yet.",
+    "auth/operation-not-allowed": "This account type is not available. Please select Room Admin, Makan Malik, or Roommate.",
     "auth/admin-restricted-operation": "This action is currently restricted by the Firebase project settings.",
     "permission-denied": "You don't have permission to perform this action.",
     "not-found": "The requested item could not be found."

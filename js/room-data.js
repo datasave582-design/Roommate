@@ -15,48 +15,56 @@ export const DEFAULT_CATEGORIES = ["Food/Grocery","Electricity","Internet","Rent
 
 // ---------- Room creation (unique code via transaction) ----------
 export async function createRoom(adminUid, { name, flatNumber, address, city, rent, dueDate, description }) {
+  if (!adminUid) throw { code: "auth/invalid-user", message: "Please log in again." };
+  if (!String(name || "").trim()) throw { code: "invalid-argument", message: "Room name is required." };
+
   const roomRef = doc(collection(db, "rooms"));
-  let code;
+  let code = null;
+
+  // Keep room creation atomic. The rules use getAfter() for the room/member
+  // checks, so the admin member and user.roomId can safely be created in the
+  // same transaction as the room itself.
   await runTransaction(db, async (tx) => {
-    let codeRef, codeSnap;
-    for (let i = 0; i < 8; i++) {
-      code = generateRoomCode();
-      codeRef = doc(db, "roomCodes", code);
-      codeSnap = await tx.get(codeRef);
-      if (!codeSnap.exists()) break;
-      code = null;
+    for (let i = 0; i < 12; i++) {
+      const candidate = generateRoomCode();
+      const codeRef = doc(db, "roomCodes", candidate);
+      const codeSnap = await tx.get(codeRef);
+      if (!codeSnap.exists()) {
+        code = candidate;
+        tx.set(roomRef, {
+          roomId: roomRef.id,
+          adminUid,
+          name: String(name).trim(),
+          flatNumber: String(flatNumber || "").trim(),
+          address: String(address || "").trim(),
+          city: String(city || "").trim(),
+          monthlyRent: Number(rent || 0),
+          rentDueDate: dueDate || null,
+          description: String(description || "").trim(),
+          code,
+          memberCount: 1,
+          status: "active",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        tx.set(codeRef, { roomId: roomRef.id, createdAt: serverTimestamp() });
+        tx.set(doc(db, "rooms", roomRef.id, "members", adminUid), {
+          uid: adminUid,
+          role: "admin",
+          status: "active",
+          joinedAt: serverTimestamp()
+        });
+        tx.update(doc(db, "users", adminUid), {
+          roomId: roomRef.id,
+          updatedAt: serverTimestamp()
+        });
+        return;
+      }
     }
-    if (!code) throw new Error("Could not generate a unique room code, please try again.");
-
-    tx.set(roomRef, {
-      roomId: roomRef.id,
-      adminUid,
-      name, flatNumber, address, city,
-      monthlyRent: rent || 0,
-      rentDueDate: dueDate || null,
-      description: description || "",
-      code,
-      memberCount: 1,
-      status: "active",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    tx.set(codeRef, { roomId: roomRef.id, createdAt: serverTimestamp() });
-    tx.update(doc(db, "users", adminUid), { roomId: roomRef.id, updatedAt: serverTimestamp() });
+    throw { code: "already-exists", message: "Could not generate a unique room code. Please try again." };
   });
 
-  // The admin's own member-entry MUST be written as a separate request, after
-  // the transaction above has actually committed. Firestore rules resolve
-  // get()/exists() calls against the database state at the START of a
-  // transaction — they never see writes made earlier in that same
-  // transaction. isRoomAdmin() (used by the members/{uid} create rule) reads
-  // the room via get(), so if this write stayed inside the transaction that
-  // creates the room itself, the rule would always see "room doesn't exist
-  // yet" and reject it — which is exactly what was happening before this fix.
-  await setDoc(doc(db, "rooms", roomRef.id, "members", adminUid), {
-    uid: adminUid, role: "admin", status: "active", joinedAt: serverTimestamp()
-  });
-
+  if (!code) throw new Error("Room creation failed.");
   return roomRef.id;
 }
 

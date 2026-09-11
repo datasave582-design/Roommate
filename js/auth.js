@@ -1,5 +1,5 @@
 // auth.js — Firebase Authentication + users/{uid} profile handling
-import { auth, db, ROOT_PATH } from "./firebase-config.js";
+import { auth, db, ROOT_PATH, authPersistenceReady } from "./firebase-config.js";
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
   sendPasswordResetEmail, onAuthStateChanged, updateProfile, deleteUser,
@@ -44,6 +44,7 @@ export async function registerUser({ name, email, mobile, password, role }) {
 }
 
 export async function loginUser(email, password) {
+  await authPersistenceReady;
   const cred = await signInWithEmailAndPassword(auth, email, password);
   return cred.user;
 }
@@ -70,6 +71,7 @@ export async function loginWithGoogle(role) {
   if (!["roomAdmin", "landlord", "roommate"].includes(role)) {
     throw { code: "auth/operation-not-allowed", message: "Please select a login type first." };
   }
+  await authPersistenceReady;
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
   try {

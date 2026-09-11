@@ -20,7 +20,10 @@ export const ROOT_PATH = new URL("..", import.meta.url).href;
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence).catch(() => {});
+// Always establish browser-local persistence before any login attempt.
+// Awaiting this promise prevents a first-login race where the account is
+// authenticated but the session is not persisted for the next page load.
+export const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch(() => {});
 
 // Keep Firestore initialization deliberately simple. Optional persistent-cache
 // APIs can break an otherwise healthy app in some mobile WebViews, so the app

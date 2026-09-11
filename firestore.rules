@@ -43,7 +43,6 @@ service cloud.firestore {
     }
     function isRoomAdminAfter(roomId) {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/rooms/$(roomId))
         && getAfter(/databases/$(database)/documents/rooms/$(roomId)).data.adminUid == request.auth.uid;
     }
     function isLandlordOwner(propertyId) {
@@ -118,7 +117,7 @@ service cloud.firestore {
 
       match /members/{memberUid} {
         allow read: if isActiveRoomMember(roomId);
-        allow create: if isRoomAdmin(roomId)
+        allow create: if (isRoomAdmin(roomId) || isRoomAdminAfter(roomId))
           && request.resource.data.uid == memberUid
           && request.resource.data.role in ["admin", "roommate"]
           && request.resource.data.status in ["active", "inactive"];

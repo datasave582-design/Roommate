@@ -96,3 +96,11 @@ roommate/dashboard.html+js  Roommate app
 
 ### Important
 The package is statically validated, but production Firebase behavior still requires publishing `firestore.rules` and `firestore.indexes.json` to project `roommate-b1018`. Firebase rules/indexes are enforced by Firebase after deployment; this environment cannot publish to the user's Firebase project.
+
+## V8 final landlord/admin connection fixes
+- Makan Malik code generation no longer depends on a multi-document transaction; it uses a unique direct code document and recovers old codes.
+- Added Remove/Disconnect Admin from Makan Malik dashboard. This disconnects the relationship only; it never deletes the Admin Firebase account.
+- Added Disconnect Makan Malik on Room Admin side.
+- Added Firestore rules for safe connection deletion + profile cleanup.
+- Added safer landlordCodes create authorization based on authenticated UID ownership.
+- Building Edit/Delete remains available; deleting a building unassigns connected Admins first.

@@ -107,6 +107,13 @@ service cloud.firestore {
             && request.resource.data.get("landlordConnectionStatus", null) == "approved"
             && getAfter(/databases/$(database)/documents/landlordConnections/$(uid)).data.status == "approved"
             && getAfter(/databases/$(database)/documents/landlordConnections/$(uid)).data.landlordUid == request.auth.uid)
+          // The landlord or the Admin may atomically disconnect the relationship.
+          || (isSignedIn()
+            && resource.data.get("landlordUid", null) is string
+            && request.resource.data.get("landlordUid", null) == null
+            && request.resource.data.get("landlordConnectionStatus", null) == "disconnected"
+            && !existsAfter(/databases/$(database)/documents/landlordConnections/$(uid))
+            && (isSelf(uid) || resource.data.get("landlordUid", null) == request.auth.uid))
         );
 
       allow delete: if false;
@@ -288,7 +295,6 @@ service cloud.firestore {
     match /landlordCodes/{code} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
-        && myProfile().role == "landlord"
         && request.resource.data.landlordUid == request.auth.uid;
       allow update: if false;
       allow delete: if isSignedIn()
@@ -309,7 +315,9 @@ service cloud.firestore {
         && request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null)
         && request.resource.data.status == "approved"
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["buildingId", "updatedAt"]);
-      allow delete: if false;
+      allow delete: if isSignedIn()
+        && resource.data.landlordUid == request.auth.uid
+        && resource.data.status == "approved";
     }
 
     match /propertyRequests/{requestId} {

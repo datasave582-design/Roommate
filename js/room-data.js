@@ -278,8 +278,13 @@ export async function requestLandlordConnection(adminUid, code) {
   const existing = await getDoc(ref);
   if (existing.exists() && existing.data().status === "pending") return existing.id;
   await setDoc(ref, {
-    requestedBy: adminUid, landlordUid, status: "pending", requestType: "roomAdminConnection",
-    createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+    requestedBy: adminUid,
+    landlordUid,
+    connectionCode: normalized,
+    status: "pending",
+    requestType: "roomAdminConnection",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
   });
   return ref.id;
 }

@@ -309,8 +309,12 @@ export async function requestLandlordConnection(adminUid, code) {
   if (!codeSnap.exists()) throw { code: "not-found", message: "Invalid Makan Malik code." };
   const landlordUid = codeSnap.data().landlordUid;
   if (!landlordUid || landlordUid === adminUid) throw { code: "invalid-argument", message: "Invalid landlord code." };
-  const landlordSnap = await getDoc(doc(db, "users", landlordUid));
-  if (!landlordSnap.exists() || landlordSnap.data().role !== "landlord") throw { code: "not-found", message: "Makan Malik account not found." };
+  // NOTE: we do NOT read users/{landlordUid} here to double-check the role.
+  // That doc is private to its owner (users/{uid} rule only allows isSelf
+  // reads) so a Room Admin reading it always throws permission-denied. It's
+  // also redundant: landlordCodes/{code} can only ever be created by an
+  // account whose profile already has role=="landlord" (enforced by the
+  // landlordCodes create rule), so a valid code is proof enough on its own.
   const ref = doc(db, "propertyRequests", adminUid);
   const existing = await getDoc(ref);
   if (existing.exists() && existing.data().status === "pending") return existing.id;

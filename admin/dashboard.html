@@ -15,7 +15,18 @@
 <!-- ===== Create Room (shown only if this admin has no room yet) ===== -->
 <div id="createRoomOverlay" class="overlay center hidden">
   <div class="sheet">
-    <div class="sheet-title">➕ Create Your Room</div>
+    <div class="sheet-title">🔗 Connect Your Makan Malik</div>
+    <div id="landlordConnectBox" class="card" style="margin-bottom:14px;box-shadow:none;border:1px solid var(--border);">
+      <div class="person-name">First get Makan Malik approval</div>
+      <div class="person-meta" style="margin-top:4px;">Ask your Makan Malik for their connection code, then send a request. Room creation unlocks after approval.</div>
+      <form id="connectLandlordForm" style="margin-top:12px;">
+        <div class="field"><label>Makan Malik Connection Code</label><input id="landlordCodeInput" type="text" maxlength="10" autocomplete="off" placeholder="e.g. AB12CD"></div>
+        <button type="submit" id="connectLandlordBtn" class="btn btn-primary">Send Approval Request</button>
+      </form>
+      <div id="landlordConnectStatus" class="person-meta" style="margin-top:10px;"></div>
+    </div>
+    <div id="createRoomSection" class="hidden">
+    <div class="sheet-title" style="font-size:1.05rem;margin-bottom:10px;">➕ Create Your Room</div>
     <form id="createRoomForm">
       <div class="field"><label>Room Name</label><input type="text" id="crName" required placeholder="e.g. Sunrise Flat"></div>
       <div class="field"><label>Room / Flat Number</label><input type="text" id="crFlat" required></div>
@@ -26,13 +37,14 @@
       <div class="field"><label>Description</label><textarea id="crDesc" rows="2"></textarea></div>
       <button type="submit" id="crBtn" class="btn btn-primary">Create Room</button>
     </form>
+    </div>
   </div>
 </div>
 
 <!-- ===== App shell ===== -->
 <div id="app" class="app hidden">
   <div class="app-header">
-    <div><div class="greet" id="greetText">Good Morning 👋</div><div class="room-name" id="roomNameText">—</div></div>
+    <div><div class="greet" id="greetText">Good Morning 👋</div><div class="room-name" id="roomNameText">—</div><div id="landlordBadge" class="person-meta" style="margin-top:3px;"></div></div>
     <div style="display:flex;gap:10px;">
       <button class="icon-btn" id="notifBtn">🔔<span id="notifDot" class="badge-dot hidden"></span></button>
       <button class="icon-btn" id="logoutBtn">⏻</button>
@@ -81,6 +93,11 @@
       <div id="joinRequestsWrap"></div>
       <div class="section-title">Members</div>
       <div id="membersList" class="card"></div>
+      <div class="card" style="margin-top:18px;border:1px solid #f3c2c2;background:#fffafa;">
+        <div style="font-weight:700;color:#9f1d1d;margin-bottom:5px;">⚠️ Danger Zone</div>
+        <div class="person-meta" style="margin-bottom:12px;">Delete this room and its room data permanently. This cannot be undone.</div>
+        <button type="button" class="btn btn-danger" id="deleteRoomBtn" style="width:100%;">🗑️ Delete Room</button>
+      </div>
     </section>
 
     <!-- ---- BALANCE / SETTLEMENTS ---- -->

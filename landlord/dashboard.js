@@ -1,6 +1,6 @@
 import { auth, db, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser } from "../js/auth.js";
-import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import { ensureLandlordCode, listenLandlordRequests, approveLandlordRequest, rejectLandlordRequest, listenLandlordConnections, assignLandlordAdminBuilding, sendLandlordNotification } from "../js/room-data.js";
 
 const $=id=>document.getElementById(id); let me=null, buildings=[], connections=[];
@@ -23,8 +23,13 @@ function renderRequests(reqs){
 }
 
 async function loadBuildings(){
-  const q=query(collection(db,"properties"),where("ownerUid","==",me.uid),orderBy("createdAt","desc"));
-  const s=await getDocs(q); buildings=s.docs.map(d=>({id:d.id,...d.data()})); renderBuildings(); renderConnections();
+  const q=query(collection(db,"properties"),where("ownerUid","==",me.uid));
+  const s=await getDocs(q);
+  buildings=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
+    const av=a.createdAt?.toMillis?.() ?? 0, bv=b.createdAt?.toMillis?.() ?? 0;
+    return bv-av;
+  });
+  renderBuildings(); renderConnections();
 }
 function renderBuildings(){
   $("statBuildings").textContent=buildings.length;

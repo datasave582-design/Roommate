@@ -246,94 +246,56 @@ export async function setMemberStatus(roomId, uid, status) {
 export async function ensureLandlordCode(landlordUid) {
   if (!landlordUid) throw { code: "auth/invalid-user", message: "Please log in again." };
 
+  // The authenticated landlord is the only source of ownership. The code
+  // index itself is the source of truth, so an old/missing profile field can
+  // never prevent the code from being displayed.
   const profileRef = doc(db, "users", landlordUid);
   const profileSnap = await getDoc(profileRef);
   if (!profileSnap.exists() || profileSnap.data().role !== "landlord") {
-    throw { code: "permission-denied", message: "Landlord profile not found." };
+    throw { code: "permission-denied", message: "Makan Malik profile not found." };
   }
 
-  // 1) Existing profile code is the preferred stable code.
-  const existingProfileCode = String(profileSnap.data().landlordCode || "").trim().toUpperCase();
-  if (existingProfileCode) {
-    const existingRef = doc(db, "landlordCodes", existingProfileCode);
-    const existingCodeSnap = await getDoc(existingRef);
-    if (!existingCodeSnap.exists()) {
-      await setDoc(existingRef, { landlordUid, createdAt: serverTimestamp() });
-    } else if (existingCodeSnap.data().landlordUid !== landlordUid) {
-      throw { code: "already-exists", message: "This landlord code is already assigned to another account." };
+  const profileCode = String(profileSnap.data().landlordCode || "").trim().toUpperCase();
+  if (profileCode) {
+    const codeRef = doc(db, "landlordCodes", profileCode);
+    const codeSnap = await getDoc(codeRef);
+    if (!codeSnap.exists()) {
+      await setDoc(codeRef, { landlordUid, createdAt: serverTimestamp() });
+    } else if (codeSnap.data().landlordUid !== landlordUid) {
+      throw { code: "already-exists", message: "Saved Makan Malik code belongs to another account." };
     }
-    return existingProfileCode;
+    return profileCode;
   }
 
-  // 2) Recover a code created on another device/tab. The query is optional;
-  // if an index is temporarily unavailable we still continue to generation.
-  try {
-    const existingQuery = query(
-      collection(db, "landlordCodes"),
-      where("landlordUid", "==", landlordUid),
-      limit(1)
-    );
-    const existingQuerySnap = await getDocs(existingQuery);
-    if (!existingQuerySnap.empty) {
-      const code = existingQuerySnap.docs[0].id;
-      try {
-        await updateDoc(profileRef, { landlordCode: code, updatedAt: serverTimestamp() });
-      } catch (e) {
-        console.warn("Could not sync landlordCode to profile; index code remains valid.", e);
-      }
-      return code;
-    }
-  } catch (e) {
-    console.warn("Landlord code recovery query failed; continuing with direct generation.", e);
+  // Recover a code created earlier by this landlord.
+  const existing = await getDocs(query(
+    collection(db, "landlordCodes"),
+    where("landlordUid", "==", landlordUid),
+    limit(1)
+  ));
+  if (!existing.empty) {
+    const recovered = existing.docs[0].id;
+    try { await updateDoc(profileRef, { landlordCode: recovered, updatedAt: serverTimestamp() }); } catch (_) {}
+    return recovered;
   }
 
-  // 3) Generate a unique code. Transaction is attempted first; a direct
-  // create fallback is used because some older Firestore deployments have
-  // had transaction/index issues even though normal document writes work.
-  for (let attempt = 0; attempt < 25; attempt++) {
+  // Generate a unique code. A direct create is used rather than depending on
+  // a multi-document transaction, making this reliable on mobile networks.
+  for (let i = 0; i < 40; i++) {
     const candidate = generateRoomCode();
     const codeRef = doc(db, "landlordCodes", candidate);
     try {
-      await runTransaction(db, async (tx) => {
-        const codeSnap = await tx.get(codeRef);
-        if (codeSnap.exists()) {
-          if (codeSnap.data().landlordUid === landlordUid) return;
-          throw { code: "code-collision" };
-        }
-        tx.set(codeRef, { landlordUid, createdAt: serverTimestamp() });
-      });
-
-      try {
-        await updateDoc(profileRef, { landlordCode: candidate, updatedAt: serverTimestamp() });
-      } catch (e) {
-        console.warn("Could not sync landlordCode to profile; code index is valid.", e);
-      }
+      const occupied = await getDoc(codeRef);
+      if (occupied.exists()) continue;
+      await setDoc(codeRef, { landlordUid, createdAt: serverTimestamp() });
+      try { await updateDoc(profileRef, { landlordCode: candidate, updatedAt: serverTimestamp() }); } catch (_) {}
       return candidate;
     } catch (e) {
-      if (e?.code === "code-collision") continue;
-
-      // Fallback: normal create. This is intentionally NOT an update.
-      try {
-        const check = await getDoc(codeRef);
-        if (check.exists()) {
-          if (check.data().landlordUid === landlordUid) return candidate;
-          continue;
-        }
-        await setDoc(codeRef, { landlordUid, createdAt: serverTimestamp() });
-        try {
-          await updateDoc(profileRef, { landlordCode: candidate, updatedAt: serverTimestamp() });
-        } catch (syncErr) {
-          console.warn("Could not sync landlordCode to profile; code index is valid.", syncErr);
-        }
-        return candidate;
-      } catch (fallbackError) {
-        // Preserve the most useful Firebase error for the dashboard.
-        throw fallbackError?.code ? fallbackError : e;
-      }
+      if (e?.code === "already-exists") continue;
+      throw e;
     }
   }
-
-  throw { code: "already-exists", message: "Could not generate a unique Makan Malik code. Please try again." };
+  throw { code: "already-exists", message: "Could not generate a unique code. Tap Generate / Fix again." };
 }
 
 export async function getLandlordConnection(adminUid) {
@@ -395,6 +357,36 @@ export async function assignLandlordAdminBuilding(adminUid, landlordUid, buildin
   }
   await updateDoc(ref, { buildingId: buildingId || null, updatedAt: serverTimestamp() });
 }
+export async function disconnectLandlordAdmin(adminUid, landlordUid) {
+  if (!adminUid || !landlordUid) throw { code: "invalid-argument", message: "Invalid connection." };
+  const connectionRef = doc(db, "landlordConnections", adminUid);
+  const userRef = doc(db, "users", adminUid);
+  const connectionSnap = await getDoc(connectionRef);
+  if (!connectionSnap.exists() || connectionSnap.data().landlordUid !== landlordUid || connectionSnap.data().status !== "approved") {
+    throw { code: "permission-denied", message: "Admin is not connected to this Makan Malik." };
+  }
+  const batch = writeBatch(db);
+  batch.delete(connectionRef);
+  batch.update(userRef, { landlordUid: null, landlordConnectionStatus: "disconnected", updatedAt: serverTimestamp() });
+  await batch.commit();
+  try {
+    await addNotification(adminUid, { title: "Makan Malik Connection Removed", message: "Your connection with the Makan Malik was disconnected.", type: "landlord", relatedId: null });
+  } catch (_) {}
+}
+
+export async function disconnectMyLandlord(adminUid) {
+  const ref = doc(db, "landlordConnections", adminUid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    await updateDoc(doc(db, "users", adminUid), { landlordUid: null, landlordConnectionStatus: "disconnected", updatedAt: serverTimestamp() });
+    return;
+  }
+  const batch = writeBatch(db);
+  batch.delete(ref);
+  batch.update(doc(db, "users", adminUid), { landlordUid: null, landlordConnectionStatus: "disconnected", updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+
 export async function sendLandlordNotification(landlordUid, adminUids, { title, message, type }) {
   const unique = [...new Set((adminUids || []).filter(Boolean))];
   if (!unique.length) throw { code: "invalid-argument", message: "No Room Admin selected." };

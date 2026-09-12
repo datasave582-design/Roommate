@@ -4,12 +4,15 @@
 <header class="app-header"><div><div class="greet">Makan Malik</div><div class="room-name" id="welcome">Building Manager</div></div><button id="logoutBtn" class="icon-btn" title="Logout">↪</button></header>
 <main class="app-body">
 <section id="dashboardView">
-  <section class="card" style="margin-bottom:16px;border:1px solid var(--border);background:linear-gradient(135deg,#fff,#f4f9ff)">
-    <div class="row" style="align-items:center;gap:12px">
-      <div style="flex:1;min-width:0"><div class="section-title" style="margin:0">🔗 Your Makan Malik Code</div><div class="person-meta" style="margin-top:5px">Room Admin इसी code से connection request भेजेगा. Approval आप करेंगे.</div></div>
-      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end"><div id="landlordCode" class="pill pill-blue" style="font-size:1rem;letter-spacing:2px;min-width:105px;text-align:center">Loading…</div><button id="copyLandlordCode" class="btn btn-outline" style="width:auto;padding:8px 10px">Copy</button><button id="fixCodeBtn" class="btn btn-text" style="width:auto;padding:8px 6px">Fix</button></div>
+  <section class="card landlord-code-card" style="margin-bottom:16px;border:1px solid var(--border);background:linear-gradient(135deg,#fff,#f4f9ff)">
+    <div class="section-title" style="margin:0">🔗 Your Makan Malik Code</div>
+    <div class="person-meta" style="margin-top:6px">Ye code Room Admin ko do. Admin isi code se connection request bhejega, phir aap <b>Approve</b> karoge.</div>
+    <div class="code-display" id="landlordCode">Loading…</div>
+    <div class="row" style="gap:8px;margin-top:10px">
+      <button id="copyLandlordCode" class="btn btn-primary" style="width:auto;flex:1">📋 Copy Code</button>
+      <button id="fixCodeBtn" class="btn btn-outline" style="width:auto;flex:1">🔄 Generate / Fix</button>
     </div>
-    <div id="codeStatus" class="person-meta" style="margin-top:8px"></div>
+    <div id="codeStatus" class="person-meta" style="margin-top:8px;text-align:center"></div>
   </section>
 
   <section id="adminRequestsCard" class="card" style="margin-bottom:16px;display:none;border:1px solid var(--border)"><div class="section-title" style="margin:0 0 10px">🔔 Room Admin Approval Requests</div><div id="adminRequestsList"></div></section>
@@ -21,6 +24,7 @@
   </div>
 
   <div class="row" style="margin:20px 0 10px;gap:8px"><h3 class="section-title" style="margin:0">🏢 My Buildings</h3><button id="addBuildingBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">+ Building</button></div>
+  <div class="person-meta" style="margin-bottom:10px">Har building ke saamne <b>Edit</b> aur <b>Delete</b> buttons hain. Galti se banaye duplicate buildings ko yahin se hata sakte ho.</div>
   <div id="buildingList"></div>
 
   <div class="row" style="margin:24px 0 10px;gap:8px"><h3 class="section-title" style="margin:0">👨‍💼 Connected Room Admins</h3><button id="broadcastBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">📢 Send Notice</button></div>

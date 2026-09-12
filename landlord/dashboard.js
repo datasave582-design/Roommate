@@ -5,7 +5,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import {
   ensureLandlordCode, listenLandlordRequests, approveLandlordRequest, rejectLandlordRequest,
-  listenLandlordConnections, assignLandlordAdminBuilding, sendLandlordNotification
+  listenLandlordConnections, assignLandlordAdminBuilding, disconnectLandlordAdmin, sendLandlordNotification
 } from "../js/room-data.js";
 
 const $ = id => document.getElementById(id);
@@ -53,12 +53,13 @@ function renderBuildings(){
             ${b.city?`<span class="pill">📍 ${esc(b.city)}</span>`:""}
           </div>
         </div>
-        <button class="btn btn-outline buildingManage" data-id="${esc(b.id)}" style="width:auto;padding:9px 12px">Manage</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn btn-outline buildingEdit" data-id="${esc(b.id)}" style="width:auto;padding:8px 10px">✏️ Edit</button><button class="btn btn-danger buildingDelete" data-id="${esc(b.id)}" style="width:auto;padding:8px 10px">🗑️ Delete</button></div>
       </div>
     </div>`;
   }).join("") : `<div class="empty-state"><div class="emoji">🏢</div><h3>No buildings yet</h3><p>Add your first building and assign connected Room Admins.</p><button class="btn btn-primary" id="emptyAddBuilding" style="width:auto">+ Add Building</button></div>`;
   $("buildingList").innerHTML=html;
-  document.querySelectorAll(".buildingManage").forEach(b=>b.onclick=()=>buildingManageForm(buildings.find(x=>x.id===b.dataset.id)));
+  document.querySelectorAll(".buildingEdit").forEach(b=>b.onclick=()=>propertyForm(buildings.find(x=>x.id===b.dataset.id)));
+  document.querySelectorAll(".buildingDelete").forEach(b=>b.onclick=()=>deleteBuilding(buildings.find(x=>x.id===b.dataset.id)));
   $("emptyAddBuilding")?.addEventListener("click",propertyForm);
 }
 
@@ -151,9 +152,11 @@ function adminManageForm(conn){
     <div class="section-title" style="margin:0 0 10px">📢 Send Notification</div>
     <div class="field"><label>Title</label><input id="noticeTitle" maxlength="80" placeholder="Rent reminder"></div>
     <div class="field"><label>Message</label><textarea id="noticeMessage" rows="4" maxlength="500" placeholder="Monthly rent is due on the 5th."></textarea></div>
-    <button id="sendOneNotice" class="btn btn-primary">Send to this Admin</button>`);
+    <button id="sendOneNotice" class="btn btn-primary">Send to this Admin</button>
+    <button id="disconnectAdmin" class="btn btn-danger" style="margin-top:8px">🗑️ Remove / Disconnect Admin</button>`);
   $("saveAdminBuilding").onclick=async()=>{try{await assignLandlordAdminBuilding(conn.id,me.uid,$("adminBuilding").value||null);connections=connections.map(c=>c.id===conn.id?{...c,buildingId:$("adminBuilding").value||null}:c);renderBuildings();renderConnections();closeModal();toast("✅ Building assignment saved.")}catch(e){console.error(e);toast(errorText(e,"Could not save building assignment"))}};
   $("sendOneNotice").onclick=async()=>{try{const title=$("noticeTitle").value.trim(),message=$("noticeMessage").value.trim();if(!title||!message)return toast("Enter title and message.");await sendLandlordNotification(me.uid,[conn.id],{title,message,type:"landlord"});closeModal();toast("📢 Notification sent.")}catch(e){console.error(e);toast(errorText(e,"Could not send notification"))}};
+  $("disconnectAdmin").onclick=async()=>{if(!confirm("Remove this Room Admin connection? The Admin account will NOT be deleted."))return;try{await disconnectLandlordAdmin(conn.id,me.uid);connections=connections.filter(c=>c.id!==conn.id);renderBuildings();renderConnections();closeModal();toast("🗑️ Admin disconnected.")}catch(e){console.error(e);toast(errorText(e,"Could not disconnect Admin"))}};
 }
 
 async function loadLandlordCode(){

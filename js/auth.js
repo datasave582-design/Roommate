@@ -121,23 +121,61 @@ export async function getUserProfile(uid) {
  * every protected page.
  */
 export function requireAuth({ expectedRole, onReady }) {
+  let settled = false;
+  let timer = setTimeout(() => {
+    if (settled) return;
+    const loader = document.getElementById("loader");
+    if (loader) {
+      loader.innerHTML = `<div style="padding:24px;text-align:center;max-width:360px;margin:auto;color:#5f6b7a">
+        <div style="font-size:2rem;margin-bottom:10px">⚠️</div>
+        <b style="display:block;color:#10233d;margin-bottom:8px">Login is taking too long</b>
+        <div style="font-size:.9rem;line-height:1.5">Please check your internet connection and Firebase settings.</div>
+        <button class="btn btn-primary" style="width:auto;margin-top:16px;padding:10px 20px" onclick="location.reload()">Retry</button>
+      </div>`;
+    }
+  }, 12000);
+
   onAuthStateChanged(auth, async (user) => {
+    if (settled) return;
     if (!user) {
+      settled = true; clearTimeout(timer);
       window.location.href = ROOT_PATH + "index.html";
       return;
     }
-    const profile = await getUserProfile(user.uid);
-    if (!profile) {
-      window.location.href = ROOT_PATH + "index.html";
-      return;
+    try {
+      // Do not leave protected dashboards on an endless spinner if Firestore
+      // is offline, blocked by rules, or the request is otherwise stuck.
+      const profile = await Promise.race([
+        getUserProfile(user.uid),
+        new Promise((_, reject) => setTimeout(() => reject({ code: "profile-timeout", message: "Could not load account data." }), 8000))
+      ]);
+      if (!profile) {
+        settled = true; clearTimeout(timer);
+        const loader = document.getElementById("loader");
+        if (loader) loader.innerHTML = `<div style="padding:24px;text-align:center;max-width:360px;margin:auto;color:#5f6b7a"><div style="font-size:2rem;margin-bottom:10px">⚠️</div><b style="display:block;color:#10233d;margin-bottom:8px">Account profile not found</b><div style="font-size:.9rem;line-height:1.5">Please log out and sign in again.</div><button class="btn btn-primary" style="width:auto;margin-top:16px;padding:10px 20px" onclick="location.href='${ROOT_PATH}index.html'">Back to Login</button></div>`;
+        return;
+      }
+      if (expectedRole && profile.role !== expectedRole) {
+        settled = true; clearTimeout(timer);
+        const dest = { roomAdmin: "admin/dashboard.html", landlord: "landlord/dashboard.html", roommate: "roommate/dashboard.html" };
+        window.location.href = ROOT_PATH + (dest[profile.role] || "index.html");
+        return;
+      }
+      settled = true; clearTimeout(timer);
+      await onReady(user, profile);
+    } catch (err) {
+      settled = true; clearTimeout(timer);
+      console.error("Protected dashboard auth/profile check failed:", err);
+      const loader = document.getElementById("loader");
+      if (loader) {
+        loader.innerHTML = `<div style="padding:24px;text-align:center;max-width:380px;margin:auto;color:#5f6b7a">
+          <div style="font-size:2rem;margin-bottom:10px">⚠️</div>
+          <b style="display:block;color:#10233d;margin-bottom:8px">Could not load your account</b>
+          <div style="font-size:.9rem;line-height:1.5">Firebase/network connection or Firestore rules may be blocking the account profile.</div>
+          <button class="btn btn-primary" style="width:auto;margin-top:16px;padding:10px 20px" onclick="location.reload()">Retry</button>
+          <button class="btn btn-outline" style="width:auto;margin-top:8px;padding:10px 20px" onclick="location.href='${ROOT_PATH}index.html'">Back to Login</button>
+        </div>`;
+      }
     }
-    if (expectedRole && profile.role !== expectedRole) {
-      // Logged-in user trying to open a dashboard that isn't theirs — bounce
-      // them to their actual role's dashboard, never trust the URL.
-      const dest = { roomAdmin: "admin/dashboard.html", landlord: "landlord/dashboard.html", roommate: "roommate/dashboard.html" };
-      window.location.href = ROOT_PATH + (dest[profile.role] || "index.html");
-      return;
-    }
-    onReady(user, profile);
   });
 }

@@ -65,3 +65,4 @@ roommate/dashboard.html+js  Roommate app
 5. Room Admin can create the room only after Makan Malik approval; the room stores `landlordUid` so all three roles are connected.
 6. Makan Malik can see connected rooms and manage monthly rent, due date, tenant details, room status, and record rent payments.
 7. Deploy the included `firestore.rules` to Firebase before testing this workflow.
+\n\n## Landlord building fix\n- Building creation now uses the authenticated Firebase UID explicitly.\n- Newly created buildings render immediately without waiting for a second query.\n- Landlord code is loaded independently so connection listeners cannot block Buildings.\n- Firestore rules allow landlords to read/update/delete only their own properties.\n- Room Admin connection requests now include the required connectionCode field.\n

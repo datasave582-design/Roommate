@@ -234,9 +234,12 @@ service cloud.firestore {
     // Landlord / property collections — scaffolded for Phase 2.
     // ---------------------------------------------------------------------
     match /properties/{propertyId} {
-      allow create: if isSignedIn() && request.resource.data.ownerUid == request.auth.uid;
+      // Landlords own only documents whose ownerUid is their auth UID.
+      // The ownerUid check is also query-compatible for the My Buildings list.
+      allow create: if isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid;
       allow read, update: if isLandlordOwner(propertyId);
-      allow delete: if false;
+      allow delete: if isLandlordOwner(propertyId);
 
       match /floors/{floorId} {
         allow read, create, update: if isLandlordOwner(propertyId);
@@ -291,7 +294,7 @@ service cloud.firestore {
         && request.resource.data.requestType == "roomAdminConnection"
         && request.resource.data.status == "pending"
         && request.resource.data.get("landlordUid", null) is string
-        && request.resource.data.connectionCode is string
+        && request.resource.data.get("connectionCode", null) is string
         && get(/databases/$(database)/documents/landlordCodes/$(request.resource.data.connectionCode)).data.landlordUid == request.resource.data.get("landlordUid", null);
       allow read: if isSignedIn()
         && (resource.data.requestedBy == request.auth.uid || resource.data.landlordUid == request.auth.uid);

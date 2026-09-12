@@ -1,12 +1,9 @@
 // firebase-config.js — single source of Firebase init for the whole app
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import {
   getAuth, setPersistence, browserLocalPersistence
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import {
-  getFirestore, initializeFirestore, persistentLocalCache, persistentSingleTabManager
-} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-import { getAnalytics, isSupported } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-analytics.js";
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAvBAD9PeHBaxVXT6xBe8l3s35KYqmdvCM",
@@ -18,21 +15,18 @@ const firebaseConfig = {
   measurementId: "G-ESJCWE4L2Q"
 };
 
-// The site can be deployed at a domain root (e.g. Firebase Hosting) OR under a
-// sub-path (e.g. GitHub Project Pages: username.github.io/repo-name/). Every
-// redirect in the app must work in both cases, so we compute the project's
-// actual root URL here — once — from this file's own location, instead of
-// hardcoding "/index.html" style absolute paths anywhere else.
+// Works on GitHub Pages (root or project sub-path) and Firebase Hosting.
 export const ROOT_PATH = new URL("..", import.meta.url).href;
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence).catch(() => {});
+// Always establish browser-local persistence before any login attempt.
+// Awaiting this promise prevents a first-login race where the account is
+// authenticated but the session is not persisted for the next page load.
+export const authPersistenceReady = setPersistence(auth, browserLocalPersistence).catch(() => {});
 
-// Offline-capable Firestore cache so PWA has "useful offline experience"
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) })
-});
-
-export let analytics = null;
-isSupported().then((ok) => { if (ok) analytics = getAnalytics(app); }).catch(() => {});
+// Keep Firestore initialization deliberately simple. Optional persistent-cache
+// APIs can break an otherwise healthy app in some mobile WebViews, so the app
+// uses the standard Firestore instance here. Firebase itself still handles
+// transient network state safely.
+export const db = getFirestore(app);

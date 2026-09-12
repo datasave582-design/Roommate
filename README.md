@@ -77,3 +77,9 @@ roommate/dashboard.html+js  Roommate app
 6. Makan Malik can see connected rooms and manage monthly rent, due date, tenant details, room status, and record rent payments.
 7. Deploy the included `firestore.rules` to Firebase before testing this workflow.
 \n\n## Landlord building fix\n- Building creation now uses the authenticated Firebase UID explicitly.\n- Newly created buildings render immediately without waiting for a second query.\n- Landlord code is loaded independently so connection listeners cannot block Buildings.\n- Firestore rules allow landlords to read/update/delete only their own properties.\n- Room Admin connection requests now include the required connectionCode field.\n
+## v5 fixes (12 Sep 2026)
+- Fixed the `users/{uid}` update rule so optional `roomId`/`landlordUid` fields do not block creation/sync of `landlordCode`.
+- Landlord code lookup is now sourced from `landlordCodes/{code}` and can recover old accounts where the profile has a code but the index is missing.
+- Building list rules now explicitly support `get` and `list` using `ownerUid`, so the landlord's `where("ownerUid", "==", uid)` query is authorized.
+- Dashboard errors now expose the Firebase error code/message instead of only a generic failure toast.
+- Re-validated every JavaScript file with `node --check` and all JSON config files with a JSON parser.

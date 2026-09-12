@@ -86,17 +86,25 @@ service cloud.firestore {
       //     `roomId` onto a member's profile right after approving them.
       allow update: if roleUnchanged() && request.resource.data.uid == resource.data.uid
         && (
-          (isSelf(uid) && (
-            (request.resource.data.roomId == resource.data.roomId
-              && request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null))
-            || (resource.data.role == "roomAdmin" && request.resource.data.roomId == null && isRoomAdmin(resource.data.roomId))
-          ))
-          || isRoomAdmin(request.resource.data.roomId)
-          || isRoomAdminAfter(request.resource.data.roomId)
-          || (isSignedIn() && resource.data.roomId != null && request.resource.data.roomId == null && isRoomAdmin(resource.data.roomId))
+          // A user may edit their own profile without changing role/uid or
+          // changing the room/landlord relationship. This also permits the
+          // landlordCode field to be stamped onto a landlord profile.
+          (isSelf(uid)
+            && request.resource.data.get("roomId", null) == resource.data.get("roomId", null)
+            && request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null))
+          // A Room Admin may stamp/clear a room relationship when they are
+          // the actual admin of that room.
+          || (request.resource.data.get("roomId", null) is string
+            && isRoomAdmin(request.resource.data.get("roomId", null)))
+          || (request.resource.data.get("roomId", null) is string
+            && isRoomAdminAfter(request.resource.data.get("roomId", null)))
+          || (resource.data.get("roomId", null) is string
+            && request.resource.data.get("roomId", null) == null
+            && isRoomAdmin(resource.data.get("roomId", null)))
+          // Atomic landlord approval stamps the Room Admin profile.
           || (isSignedIn()
             && request.resource.data.get("landlordUid", null) == request.auth.uid
-            && request.resource.data.landlordConnectionStatus == "approved"
+            && request.resource.data.get("landlordConnectionStatus", null) == "approved"
             && getAfter(/databases/$(database)/documents/landlordConnections/$(uid)).data.status == "approved"
             && getAfter(/databases/$(database)/documents/landlordConnections/$(uid)).data.landlordUid == request.auth.uid)
         );
@@ -241,8 +249,15 @@ service cloud.firestore {
         && request.resource.data.ownerUid == request.auth.uid
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0;
-      allow read, update, delete: if isLandlordOwner(propertyId)
-        && myProfile().role == "landlord";
+      allow get: if isSignedIn()
+        && myProfile().role == "landlord"
+        && resource.data.ownerUid == request.auth.uid;
+      allow list: if isSignedIn()
+        && myProfile().role == "landlord"
+        && resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if isSignedIn()
+        && myProfile().role == "landlord"
+        && resource.data.ownerUid == request.auth.uid;
 
       match /floors/{floorId} {
         allow read, create, update: if isLandlordOwner(propertyId);

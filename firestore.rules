@@ -77,7 +77,17 @@ service cloud.firestore {
 
       // A landlord can read only their own profile. Room Admin/Roommate profiles
       // are private from the landlord.
-      allow read: if isSelf(uid);
+      // FIX (v11): listenMembers() (used by BOTH admin and roommate
+      // dashboards to show names on the member/balance list) reads every
+      // member's users/{uid} doc, not just the caller's own — with
+      // isSelf-only reads, that throws permission-denied for every member
+      // except the signed-in one, which silently breaks the whole member
+      // list as soon as a room has 2+ people. Fellow active members of the
+      // SAME room (tracked via the target profile's own roomId field) may
+      // now read each other's profile too. Landlord profiles are untouched
+      // — a landlord has no roomId, so this never opens their doc up.
+      allow read: if isSelf(uid)
+        || (resource.data.get("roomId", null) is string && isActiveRoomMember(resource.data.get("roomId", null)));
 
       // Two ways a user doc can be updated, both frontend-blocked from
       // touching role/uid:

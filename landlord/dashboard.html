@@ -1,98 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Roommate — The Roommate</title>
-<link rel="manifest" href="../manifest.json">
-<meta name="theme-color" content="#0F2A47">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../css/style.css">
-</head>
-<body>
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Makan Malik — The Roommate</title><link rel="manifest" href="../manifest.json"><link rel="stylesheet" href="../css/style.css"></head><body>
 <div id="loader" class="center-loader"><div class="dim-spinner"></div></div>
-
-<!-- ===== Join Room (no room yet) ===== -->
-<div id="joinOverlay" class="auth-wrap hidden">
-  <div class="auth-card" id="joinCard">
-    <h2>🔑 Join a Room</h2>
-    <p class="auth-sub">Enter the room code your Room Admin shared with you.</p>
-    <div id="joinError" class="auth-error hidden"></div>
-    <form id="joinForm">
-      <div class="field"><label>Room Code</label><input type="text" id="joinCode" placeholder="RM-XXXXX" style="text-transform:uppercase;" required></div>
-      <button type="submit" id="joinBtn" class="btn btn-primary">Request to Join</button>
-    </form>
-  </div>
-</div>
-
-<div id="pendingOverlay" class="auth-wrap hidden">
-  <div class="auth-card" style="text-align:center;">
-    <div style="font-size:2.4rem;margin-bottom:10px;">⏳</div>
-    <h2>Request Sent</h2>
-    <p class="auth-sub">Waiting for your Room Admin to approve your request. This page will update automatically once approved.</p>
-  </div>
-</div>
-
-<!-- ===== App shell ===== -->
 <div id="app" class="app hidden">
-  <div class="app-header">
-    <div><div class="greet" id="greetText">Hello 👋</div><div class="room-name" id="roomNameText">—</div></div>
-    <div style="display:flex;gap:10px;">
-      <button class="icon-btn" id="notifBtn">🔔<span id="notifDot" class="badge-dot hidden"></span></button>
-      <button class="icon-btn" id="logoutBtn">⏻</button>
-    </div>
-  </div>
-
-  <div class="app-body">
-    <section id="tab-home">
-      <div class="card" style="text-align:center;padding:22px;margin-bottom:16px;">
-        <div style="font-size:0.82rem;color:var(--text-dim);font-weight:600;margin-bottom:6px;">YOUR BALANCE</div>
-        <div id="myBalance" style="font-size:2rem;font-weight:700;">₹0</div>
-      </div>
-      <div class="stat-grid">
-        <div class="stat-card"><div class="label">Your Share</div><div class="value" id="statShare">₹0</div></div>
-        <div class="stat-card"><div class="label">Your Payments</div><div class="value" id="statMyPaid">₹0</div></div>
-        <div class="stat-card"><div class="label">Room Expenses</div><div class="value" id="statRoomExp">₹0</div></div>
-        <div class="stat-card"><div class="label">Pending</div><div class="value" id="statRoomPending">₹0</div></div>
-      </div>
-      <div class="section-title">Recent Expenses</div>
-      <div id="recentExpenses" class="card"></div>
-    </section>
-
-    <section id="tab-expenses" class="hidden">
-      <div class="row" style="margin-bottom:12px;">
-        <select id="expMonthSelect" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;background:#fff;width:100%;"></select>
-      </div>
-      <div id="expensesList" class="card"></div>
-    </section>
-
-    <section id="tab-balance" class="hidden">
-      <div class="section-title" style="margin-top:0;">Room Balances</div>
-      <div id="balanceList" class="card"></div>
-      <div class="section-title">🏠 Rent Info</div>
-      <div id="rentInfo" class="card"></div>
-    </section>
-
-    <section id="tab-profile" class="hidden">
-      <div class="card" id="profileCard"></div>
-    </section>
-  </div>
-
-  <div class="bottom-nav">
-    <div class="nav-item active" data-tab="home"><div class="nav-icon">🏠</div>Home</div>
-    <div class="nav-item" data-tab="expenses"><div class="nav-icon">📋</div>Expenses</div>
-    <div class="nav-item" data-tab="balance"><div class="nav-icon">💰</div>Balance</div>
-    <div class="nav-item" data-tab="profile"><div class="nav-icon">👤</div>Profile</div>
-  </div>
-</div>
-
-<div id="notifOverlay" class="overlay hidden">
-  <div class="sheet">
-    <div class="row" style="margin-bottom:14px;"><div class="sheet-title" style="margin:0;">🔔 Notifications</div><button class="btn-text" id="markAllReadBtn">Mark all read</button></div>
-    <div id="notifList"></div>
-  </div>
-</div>
-
-<script type="module" src="dashboard.js"></script>
-</body>
-</html>
+<header class="app-header"><div><div class="greet">Makan Malik</div><div class="room-name" id="welcome">Building Manager</div></div><button id="logoutBtn" class="icon-btn" title="Logout">↪</button></header>
+<main class="app-body">
+<section id="dashboardView">
+<div class="card" style="margin-bottom:16px;border:1px solid var(--border);"><div class="row"><div><div class="section-title" style="margin:0">🔗 Your Makan Malik Code</div><div class="person-meta" style="margin-top:4px">Room Admin uses this code to request connection. You approve each Admin.</div></div><div id="landlordCode" class="pill pill-blue" style="font-size:1rem;letter-spacing:2px">—</div></div></div>
+<div class="card" id="adminRequestsCard" style="margin-bottom:16px;display:none;border:1px solid var(--border);"><div class="section-title" style="margin:0 0 10px">🔔 Room Admin Approval Requests</div><div id="adminRequestsList"></div></div>
+<div class="stat-grid"><div class="stat-card"><div class="label">Buildings</div><div class="value" id="statBuildings">0</div></div><div class="stat-card"><div class="label">Connected Admins</div><div class="value" id="statAdmins">0</div></div></div>
+<div class="row" style="margin:18px 0 10px"><h3 class="section-title" style="margin:0">🏢 My Buildings</h3><button id="addBuildingBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">+ Building</button></div>
+<div id="buildingList"></div>
+<div class="row" style="margin:24px 0 10px"><h3 class="section-title" style="margin:0">👨‍💼 Connected Room Admins</h3><button id="broadcastBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">📢 Send Notice</button></div>
+<div class="person-meta" style="margin-bottom:10px">Room Admin और Roommate की private details यहाँ दिखाई नहीं देतीं। आप सिर्फ building assignment और notifications manage कर सकते हैं.</div>
+<div id="adminList"></div>
+</section>
+</main><nav class="bottom-nav"><button class="nav-item active" id="homeNav"><span class="nav-icon">🏠</span>Home</button><button class="nav-item" id="noticeNav"><span class="nav-icon">📢</span>Notices</button><button class="nav-item" id="profileNav"><span class="nav-icon">👤</span>Profile</button></nav></div>
+<div id="modal" class="overlay center hidden"><div class="sheet"><div class="row"><div class="sheet-title" id="modalTitle">Add</div><button id="closeModal" class="icon-btn">×</button></div><div id="modalBody"></div></div></div>
+<div id="toast" class="toast hidden"></div><script type="module" src="dashboard.js"></script></body></html>

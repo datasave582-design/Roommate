@@ -1,174 +1,79 @@
-import { auth, ROOT_PATH } from "../js/firebase-config.js";
-import { requireAuth, logoutUser, getUserProfile } from "../js/auth.js";
-import { formatMoney, showToast, friendlyError, withLoading, escapeHtml, formatDate, monthKey, monthLabel } from "../js/common.js";
-import {
-  requestJoinRoom, listenRoom, listenMembers, listenExpenses, listenPayments,
-  computeBalances, listenMyNotifications, markNotificationRead, markAllNotificationsRead
-} from "../js/room-data.js";
-import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-import { db } from "../js/firebase-config.js";
-import { collection, query, where, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { auth, db, ROOT_PATH } from "../js/firebase-config.js";
+import { requireAuth, logoutUser } from "../js/auth.js";
+import { collection, addDoc, getDocs, query, where, orderBy, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { ensureLandlordCode, listenLandlordRequests, approveLandlordRequest, rejectLandlordRequest, listenLandlordConnections, assignLandlordAdminBuilding, sendLandlordNotification } from "../js/room-data.js";
 
-const $ = (id) => document.getElementById(id);
-let currentUser = null, myProfile = null, roomId = null, members = [], expenses = [], payments = [];
-let selectedMonth = monthKey();
+const $=id=>document.getElementById(id); let me=null, buildings=[], connections=[];
+function toast(x){const e=$("toast");e.textContent=x;e.classList.remove("hidden");clearTimeout(window.tt);window.tt=setTimeout(()=>e.classList.add("hidden"),2600)}
+function esc(s){return String(s??"").replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function openModal(title,html){$("modalTitle").textContent=title;$("modalBody").innerHTML=html;$("modal").classList.remove("hidden")}
+function closeModal(){$("modal").classList.add("hidden")}
 
-requireAuth({
-  expectedRole: "roommate",
-  onReady: async (user, profile) => {
-    currentUser = user; myProfile = profile;
-    $("loader").classList.add("hidden");
-    if (profile.roomId) {
-      bootRoom(profile.roomId);
-    } else {
-      watchForPendingOrApproval();
-    }
-  }
-});
-
-function watchForPendingOrApproval() {
-  // Show the join form immediately as the default state so there's no blank
-  // flash while we wait for the (usually near-instant) snapshot below to
-  // tell us whether a pending request already exists.
-  $("joinOverlay").classList.remove("hidden");
-  const q = query(collection(db, "joinRequests"), where("uid", "==", currentUser.uid), where("status", "==", "pending"));
-  onSnap2(q, (snap) => {
-    if (!snap.empty) {
-      $("joinOverlay").classList.add("hidden");
-      $("pendingOverlay").classList.remove("hidden");
-    } else {
-      $("pendingOverlay").classList.add("hidden");
-      $("joinOverlay").classList.remove("hidden");
-    }
-  });
-  // Watch own profile for roomId appearing after approval
-  onSnapshot(doc(db, "users", currentUser.uid), (snap) => {
-    const data = snap.data();
-    if (data && data.roomId) {
-      $("joinOverlay").classList.add("hidden");
-      $("pendingOverlay").classList.add("hidden");
-      bootRoom(data.roomId);
-    }
-  });
+async function loadConnections(){
+  listenLandlordRequests(me.uid, reqs=>renderRequests(reqs));
+  listenLandlordConnections(me.uid, list=>{connections=list; renderConnections();});
+}
+function renderRequests(reqs){
+  const card=$("adminRequestsCard");
+  if(!reqs.length){card.style.display="none";$("adminRequestsList").innerHTML="";return;}
+  card.style.display="block";
+  $("adminRequestsList").innerHTML=reqs.map(r=>`<div class="card" style="box-shadow:none;border:1px solid var(--border);margin-bottom:8px"><div class="row"><div><div class="person-name">Room Admin Request</div><div class="person-meta">A Room Admin wants to connect with your building account.</div></div><div style="display:flex;gap:8px"><button class="btn btn-outline approveAdmin" data-id="${esc(r.id)}" data-uid="${esc(r.requestedBy)}" style="width:auto;padding:8px 12px">Approve</button><button class="btn btn-text rejectAdmin" data-id="${esc(r.id)}" style="width:auto;padding:8px 12px">Reject</button></div></div></div>`).join("");
+  document.querySelectorAll(".approveAdmin").forEach(b=>b.onclick=async()=>{try{b.disabled=true;await approveLandlordRequest(b.dataset.id,b.dataset.uid,me.uid);toast("Room Admin approved.")}catch(e){console.error(e);toast("Could not approve request")}finally{b.disabled=false}});
+  document.querySelectorAll(".rejectAdmin").forEach(b=>b.onclick=async()=>{try{await rejectLandlordRequest(b.dataset.id);toast("Request rejected")}catch(e){console.error(e);toast("Could not reject request")}});
 }
 
-$("joinForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  await withLoading($("joinBtn"), async () => {
-    try {
-      await requestJoinRoom(currentUser.uid, $("joinCode").value.trim().toUpperCase());
-      showToast("Request sent to Room Admin.");
-    } catch (err) {
-      const el = $("joinError");
-      el.textContent = err.message || friendlyError(err);
-      el.classList.remove("hidden");
-    }
-  })();
-});
-
-let booted = false;
-function bootRoom(id) {
-  if (booted) return;
-  booted = true;
-  roomId = id;
-  $("app").classList.remove("hidden");
-  populateMonthSelect();
-
-  listenRoom(roomId, (room) => {
-    if (!room) return;
-    $("roomNameText").textContent = room.name;
-    renderRentInfo(room);
-    const h = new Date().getHours();
-    $("greetText").textContent = "Hello, " + (myProfile.name || "") + " 👋";
-  });
-  listenMembers(roomId, (m) => { members = m; recomputeAndRender(); });
-  listenMyNotifications(currentUser.uid, renderNotifications);
-  subscribeMonth(selectedMonth);
+async function loadBuildings(){
+  const q=query(collection(db,"properties"),where("ownerUid","==",me.uid),orderBy("createdAt","desc"));
+  const s=await getDocs(q); buildings=s.docs.map(d=>({id:d.id,...d.data()})); renderBuildings(); renderConnections();
+}
+function renderBuildings(){
+  $("statBuildings").textContent=buildings.length;
+  $("statAdmins").textContent=connections.length;
+  $("buildingList").innerHTML=buildings.length?buildings.map(b=>`<div class="card"><div class="row"><div><h3>${esc(b.name)}</h3><div class="person-meta">${esc(b.address||"")}${b.city?", "+esc(b.city):""}</div></div><span class="pill pill-blue">${connections.filter(c=>c.buildingId===b.id).length} Admin${connections.filter(c=>c.buildingId===b.id).length===1?"":"s"}</span></div></div>`).join(""):`<div class="empty-state"><div class="emoji">🏢</div><h3>Add your first building</h3><p>Create buildings only. Roommate and Room Admin private data is never shown here.</p></div>`;
+}
+function renderConnections(){
+  $("statAdmins").textContent=connections.length;
+  const html=connections.length?connections.map((c,i)=>{
+    const building=buildings.find(b=>b.id===c.buildingId);
+    const label=`Room Admin ${i+1}`;
+    return `<div class="card"><div class="row"><div><h3>👨‍💼 ${label}</h3><div class="person-meta">Connected · ${esc(building?.name||"No building assigned")}</div></div><button class="btn btn-outline manageAdmin" data-id="${esc(c.id)}" style="width:auto">Manage</button></div></div>`;
+  }).join(""): `<div class="empty-state"><div class="emoji">🔗</div><h3>No connected Room Admins</h3><p>Approve a Room Admin request to connect them to your building.</p></div>`;
+  $("adminList").innerHTML=html;
+  document.querySelectorAll(".manageAdmin").forEach(b=>b.onclick=()=>adminManageForm(connections.find(c=>c.id===b.dataset.id)));
+}
+function adminManageForm(conn){
+  const opts=buildings.map(b=>`<option value="${esc(b.id)}" ${conn.buildingId===b.id?"selected":""}>${esc(b.name)}</option>`).join("");
+  openModal("Room Admin — Building & Notifications",`
+    <div class="field"><label>Building</label><select id="adminBuilding"><option value="">No building assigned</option>${opts}</select></div>
+    <button id="saveAdminBuilding" class="btn btn-outline">Save Building</button>
+    <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
+    <div class="section-title" style="margin:0 0 10px">📢 Send Notification</div>
+    <div class="field"><label>Title</label><input id="noticeTitle" maxlength="80" placeholder="Rent reminder"></div>
+    <div class="field"><label>Message</label><textarea id="noticeMessage" rows="4" maxlength="500" placeholder="Monthly rent is due on the 5th."></textarea></div>
+    <button id="sendOneNotice" class="btn btn-primary">Send to this Admin</button>`);
+  $("saveAdminBuilding").onclick=async()=>{try{await assignLandlordAdminBuilding(conn.id,me.uid,$("adminBuilding").value||null);closeModal();toast("Building assignment saved")}catch(e){console.error(e);toast("Could not save building")}};
+  $("sendOneNotice").onclick=async()=>{try{const title=$("noticeTitle").value.trim(),message=$("noticeMessage").value.trim();if(!title||!message)return toast("Enter title and message");await sendLandlordNotification(me.uid,[conn.id],{title,message,type:"landlord"});closeModal();toast("Notification sent")}catch(e){console.error(e);toast("Could not send notification")}};
+}
+function propertyForm(){openModal("Add Building",`<div class="field"><label>Building Name</label><input id="fName" placeholder="Sharma Building" required></div><div class="field"><label>Address</label><input id="fAddress" placeholder="Building address"></div><div class="field"><label>City</label><input id="fCity" placeholder="Noida"></div><button id="saveProperty" class="btn btn-primary">Create Building</button>`);$("saveProperty").onclick=async()=>{try{const name=$("fName").value.trim();if(!name)return toast("Building name is required");await addDoc(collection(db,"properties"),{ownerUid:me.uid,name,address:$("fAddress").value.trim(),city:$("fCity").value.trim(),createdAt:serverTimestamp(),updatedAt:serverTimestamp()});closeModal();await loadBuildings();toast("Building created")}catch(e){console.error(e);toast("Could not create building")}}}
+function broadcastForm(){
+  if(!connections.length)return toast("No connected Room Admins.");
+  const buildingOptions=buildings.map(b=>`<option value="${esc(b.id)}">${esc(b.name)} (${connections.filter(c=>c.buildingId===b.id).length} Admins)</option>`).join("");
+  openModal("Send to Room Admins",`
+    <div class="field"><label>Send To</label><select id="broadcastTarget"><option value="all">All connected Admins</option>${buildingOptions}</select></div>
+    <div class="field"><label>Notification Type</label><select id="broadcastType"><option value="rent">💰 Rent Notification</option><option value="notice">📢 General Notice</option><option value="maintenance">🛠 Maintenance</option></select></div>
+    <div class="field"><label>Title</label><input id="broadcastTitle" maxlength="80" placeholder="Rent due reminder"></div>
+    <div class="field"><label>Message</label><textarea id="broadcastMessage" rows="4" maxlength="500" placeholder="Please collect/communicate this month's rent reminder."></textarea></div>
+    <button id="sendBroadcast" class="btn btn-primary">Send Notification</button>`);
+  $("sendBroadcast").onclick=async()=>{try{const title=$("broadcastTitle").value.trim(),message=$("broadcastMessage").value.trim();if(!title||!message)return toast("Enter title and message");let targets=connections;if($("broadcastTarget").value!=="all")targets=connections.filter(c=>c.buildingId===$("broadcastTarget").value);if(!targets.length)return toast("No Admin assigned to this building.");await sendLandlordNotification(me.uid,targets.map(c=>c.id),{title,message,type:$("broadcastType").value});closeModal();toast(`Notification sent to ${targets.length} Admin${targets.length===1?"":"s"}`)}catch(e){console.error(e);toast("Could not send notifications")}};
 }
 
-let unsubExp = null, unsubPay = null;
-function subscribeMonth(mk) {
-  if (unsubExp) unsubExp();
-  if (unsubPay) unsubPay();
-  unsubExp = listenExpenses(roomId, mk, (list) => { expenses = list; recomputeAndRender(); });
-  unsubPay = listenPayments(roomId, mk, (list) => { payments = list; recomputeAndRender(); });
-}
-function populateMonthSelect() {
-  const opts = [];
-  const now = new Date();
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const mk = monthKey(d);
-    opts.push(`<option value="${mk}">${monthLabel(mk)}</option>`);
-  }
-  $("expMonthSelect").innerHTML = opts.join("");
-  $("expMonthSelect").addEventListener("change", (e) => { selectedMonth = e.target.value; subscribeMonth(selectedMonth); });
-}
+$("addBuildingBtn").onclick=propertyForm;
+$("broadcastBtn").onclick=broadcastForm;
+$("closeModal").onclick=closeModal;
+$("modal").onclick=e=>{if(e.target.id==="modal")closeModal()};
+$("logoutBtn").onclick=async()=>{await logoutUser();location.href=ROOT_PATH+"index.html"};
+$("homeNav").onclick=()=>{};
+$("noticeNav").onclick=broadcastForm;
+$("profileNav").onclick=()=>toast("Your landlord account is secure. Room Admin/Roommate private data is not visible here.");
 
-function recomputeAndRender() {
-  if (!members.length) return;
-  const active = members.filter(m => m.status === "active");
-  const balances = computeBalances(active, expenses, payments);
-  const mine = balances.find(b => b.uid === currentUser.uid) || { share: 0, paid: 0, balance: 0 };
-  const totalExpenses = expenses.filter(e => !e.archived).reduce((s, e) => s + e.amountPaise, 0);
-  const totalPaid = payments.reduce((s, p) => s + p.amountPaise, 0);
-
-  const balEl = $("myBalance");
-  balEl.textContent = mine.balance > 0 ? `+${formatMoney(mine.balance)} Credit` : mine.balance < 0 ? `${formatMoney(Math.abs(mine.balance))} Due` : "✅ Settled";
-  balEl.style.color = mine.balance > 0 ? "var(--green)" : mine.balance < 0 ? "var(--red)" : "var(--text)";
-
-  $("statShare").textContent = formatMoney(mine.share);
-  $("statMyPaid").textContent = formatMoney(mine.paid);
-  $("statRoomExp").textContent = formatMoney(totalExpenses);
-  $("statRoomPending").textContent = formatMoney(Math.max(0, totalExpenses - totalPaid));
-
-  const recent = expenses.filter(e => !e.archived).slice(0, 6);
-  $("recentExpenses").innerHTML = recent.length ? recent.map(e => `
-    <div class="expense-row"><div><div class="expense-title">${escapeHtml(e.title)}</div>
-    <div class="expense-meta">${escapeHtml(e.category)} · ${formatDate(e.date)}</div></div>
-    <div class="expense-amt">${formatMoney(e.amountPaise)}</div></div>`).join("")
-    : `<div class="empty-state"><div class="emoji">📋</div>No expenses yet this month.</div>`;
-  $("expensesList").innerHTML = $("recentExpenses").innerHTML;
-
-  $("balanceList").innerHTML = balances.map(b => {
-    const pill = b.balance > 0 ? `<span class="pill pill-green">+${formatMoney(b.balance)}</span>` : b.balance < 0 ? `<span class="pill pill-red">${formatMoney(Math.abs(b.balance))}</span>` : `<span class="pill pill-gray">✅</span>`;
-    return `<div class="person-row"><div><div class="person-name">${escapeHtml(b.name)}${b.uid === currentUser.uid ? " (You)" : ""}</div>
-    <div class="person-meta">Share ${formatMoney(b.share)} · Paid ${formatMoney(b.paid)}</div></div>${pill}</div>`;
-  }).join("");
-
-  $("profileCard").innerHTML = `
-    <div class="person-row"><div class="person-meta">Name</div><div class="person-name">${escapeHtml(myProfile.name)}</div></div>
-    <div class="person-row"><div class="person-meta">Mobile</div><div class="person-name">${escapeHtml(myProfile.phone)}</div></div>
-    <div class="person-row"><div class="person-meta">Email</div><div class="person-name">${escapeHtml(myProfile.email)}</div></div>
-    <div class="person-row"><div class="person-meta">Role</div><div class="person-name">Roommate</div></div>`;
-}
-
-function renderRentInfo(room) {
-  $("rentInfo").innerHTML = `
-    <div class="person-row"><div class="person-meta">Monthly Rent</div><div class="person-name">${formatMoney(room.monthlyRent || 0)}</div></div>
-    <div class="person-row"><div class="person-meta">Due Date</div><div class="person-name">${room.rentDueDate ? room.rentDueDate + " of every month" : "—"}</div></div>`;
-}
-
-function renderNotifications(list) {
-  const unread = list.filter(n => !n.read).length;
-  $("notifDot").classList.toggle("hidden", unread === 0);
-  $("notifList").innerHTML = list.length ? list.map(n => `
-    <div class="expense-row" data-notif="${n.id}" style="opacity:${n.read ? 0.6 : 1};">
-      <div><div class="expense-title">${escapeHtml(n.title)}</div><div class="expense-meta">${escapeHtml(n.message)} · ${formatDate(n.createdAt)}</div></div>
-    </div>`).join("") : `<div class="empty-state"><div class="emoji">🔔</div>No notifications</div>`;
-  $("notifList").querySelectorAll("[data-notif]").forEach(el => el.onclick = () => markNotificationRead(currentUser.uid, el.dataset.notif));
-  window.__latestNotifs = list;
-}
-$("notifBtn").addEventListener("click", () => $("notifOverlay").classList.remove("hidden"));
-$("notifOverlay").addEventListener("click", (e) => { if (e.target.id === "notifOverlay") e.target.classList.add("hidden"); });
-$("markAllReadBtn").addEventListener("click", () => markAllNotificationsRead(currentUser.uid, window.__latestNotifs || []));
-
-document.querySelectorAll(".nav-item").forEach(item => {
-  item.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach(i => i.classList.remove("active"));
-    item.classList.add("active");
-    ["home", "expenses", "balance", "profile"].forEach(t => $("tab-" + t).classList.add("hidden"));
-    $("tab-" + item.dataset.tab).classList.remove("hidden");
-  });
-});
-$("logoutBtn").addEventListener("click", async () => { await logoutUser(); window.location.href = ROOT_PATH + "index.html"; });
+requireAuth({expectedRole:"landlord",onReady:async(user,profile)=>{me=user;$("welcome").textContent=profile.name||user.displayName||"Makan Malik";$("loader").classList.add("hidden");$("app").classList.remove("hidden");try{await loadConnections();await loadBuildings()}catch(e){console.error(e);toast("Could not load dashboard. Deploy the latest firestore.rules.")}}});

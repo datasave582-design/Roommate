@@ -252,64 +252,84 @@ export async function ensureLandlordCode(landlordUid) {
     throw { code: "permission-denied", message: "Landlord profile not found." };
   }
 
+  // 1) Existing profile code is the preferred stable code.
   const existingProfileCode = String(profileSnap.data().landlordCode || "").trim().toUpperCase();
   if (existingProfileCode) {
     const existingRef = doc(db, "landlordCodes", existingProfileCode);
     const existingCodeSnap = await getDoc(existingRef);
     if (!existingCodeSnap.exists()) {
-      // Repair old accounts where the profile has a code but the lookup index
-      // was never created. Creating this document is all the Admin needs.
-      await setDoc(existingRef, {
-        landlordUid,
-        createdAt: serverTimestamp()
-      });
+      await setDoc(existingRef, { landlordUid, createdAt: serverTimestamp() });
     } else if (existingCodeSnap.data().landlordUid !== landlordUid) {
       throw { code: "already-exists", message: "This landlord code is already assigned to another account." };
     }
     return existingProfileCode;
   }
 
-  // First look for a code already created by another tab/device. This avoids
-  // generating a new code every time the dashboard is opened.
-  const existingQuery = query(
-    collection(db, "landlordCodes"),
-    where("landlordUid", "==", landlordUid),
-    limit(1)
-  );
-  const existingQuerySnap = await getDocs(existingQuery);
-  if (!existingQuerySnap.empty) {
-    const code = existingQuerySnap.docs[0].id;
-    // Keep the profile field in sync, but do not make the dashboard depend on
-    // this optional profile update succeeding.
-    try {
-      await updateDoc(profileRef, { landlordCode: code, updatedAt: serverTimestamp() });
-    } catch (e) {
-      console.warn("Could not sync landlordCode to profile; index code is still valid.", e);
+  // 2) Recover a code created on another device/tab. The query is optional;
+  // if an index is temporarily unavailable we still continue to generation.
+  try {
+    const existingQuery = query(
+      collection(db, "landlordCodes"),
+      where("landlordUid", "==", landlordUid),
+      limit(1)
+    );
+    const existingQuerySnap = await getDocs(existingQuery);
+    if (!existingQuerySnap.empty) {
+      const code = existingQuerySnap.docs[0].id;
+      try {
+        await updateDoc(profileRef, { landlordCode: code, updatedAt: serverTimestamp() });
+      } catch (e) {
+        console.warn("Could not sync landlordCode to profile; index code remains valid.", e);
+      }
+      return code;
     }
-    return code;
+  } catch (e) {
+    console.warn("Landlord code recovery query failed; continuing with direct generation.", e);
   }
 
-  // Generate the code and create the lookup index atomically. The code index
-  // is the source of truth for Room Admin connection requests.
-  for (let attempt = 0; attempt < 20; attempt++) {
+  // 3) Generate a unique code. Transaction is attempted first; a direct
+  // create fallback is used because some older Firestore deployments have
+  // had transaction/index issues even though normal document writes work.
+  for (let attempt = 0; attempt < 25; attempt++) {
     const candidate = generateRoomCode();
     const codeRef = doc(db, "landlordCodes", candidate);
     try {
       await runTransaction(db, async (tx) => {
         const codeSnap = await tx.get(codeRef);
-        if (codeSnap.exists()) throw { code: "code-collision" };
+        if (codeSnap.exists()) {
+          if (codeSnap.data().landlordUid === landlordUid) return;
+          throw { code: "code-collision" };
+        }
         tx.set(codeRef, { landlordUid, createdAt: serverTimestamp() });
       });
 
       try {
         await updateDoc(profileRef, { landlordCode: candidate, updatedAt: serverTimestamp() });
       } catch (e) {
-        console.warn("Could not sync landlordCode to profile; index code is still valid.", e);
+        console.warn("Could not sync landlordCode to profile; code index is valid.", e);
       }
       return candidate;
     } catch (e) {
       if (e?.code === "code-collision") continue;
-      throw e;
+
+      // Fallback: normal create. This is intentionally NOT an update.
+      try {
+        const check = await getDoc(codeRef);
+        if (check.exists()) {
+          if (check.data().landlordUid === landlordUid) return candidate;
+          continue;
+        }
+        await setDoc(codeRef, { landlordUid, createdAt: serverTimestamp() });
+        try {
+          await updateDoc(profileRef, { landlordCode: candidate, updatedAt: serverTimestamp() });
+        } catch (syncErr) {
+          console.warn("Could not sync landlordCode to profile; code index is valid.", syncErr);
+        }
+        return candidate;
+      } catch (fallbackError) {
+        // Preserve the most useful Firebase error for the dashboard.
+        throw fallbackError?.code ? fallbackError : e;
+      }
     }
   }
 
@@ -346,9 +366,9 @@ export async function requestLandlordConnection(adminUid, code) {
 export function listenMyLandlordRequest(adminUid, cb) {
   return onSnapshot(doc(db, "propertyRequests", adminUid), snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null));
 }
-export function listenLandlordRequests(landlordUid, cb) {
+export function listenLandlordRequests(landlordUid, cb, onError) {
   const q = query(collection(db, "propertyRequests"), where("landlordUid", "==", landlordUid), where("status", "==", "pending"));
-  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), onError);
 }
 export async function approveLandlordRequest(requestId, adminUid, landlordUid) {
   const batch = writeBatch(db);
@@ -361,9 +381,9 @@ export async function approveLandlordRequest(requestId, adminUid, landlordUid) {
 export async function rejectLandlordRequest(requestId) {
   await updateDoc(doc(db, "propertyRequests", requestId), { status: "rejected", resolvedAt: serverTimestamp(), updatedAt: serverTimestamp() });
 }
-export function listenLandlordConnections(landlordUid, cb) {
+export function listenLandlordConnections(landlordUid, cb, onError) {
   const q = query(collection(db, "landlordConnections"), where("landlordUid", "==", landlordUid), where("status", "==", "approved"));
-  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  return onSnapshot(q, snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), onError);
 }
 export async function assignLandlordAdminBuilding(adminUid, landlordUid, buildingId) {
   const ref = doc(db, "landlordConnections", adminUid);

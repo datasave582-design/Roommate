@@ -245,21 +245,43 @@ export async function setMemberStatus(roomId, uid, status) {
 // ---------- Landlord ↔ Room Admin connection ----------
 export async function ensureLandlordCode(landlordUid) {
   if (!landlordUid) throw { code: "auth/invalid-user", message: "Please log in again." };
+
   const profileRef = doc(db, "users", landlordUid);
-  const snap = await getDoc(profileRef);
-  if (!snap.exists() || snap.data().role !== "landlord") throw { code: "permission-denied", message: "Landlord profile not found." };
-  const existing = snap.data().landlordCode;
-  if (existing) return existing;
-  for (let i = 0; i < 12; i++) {
-    const code = generateRoomCode();
-    const codeRef = doc(db, "landlordCodes", code);
-    const codeSnap = await getDoc(codeRef);
-    if (codeSnap.exists()) continue;
-    await setDoc(codeRef, { landlordUid, createdAt: serverTimestamp() });
-    await updateDoc(profileRef, { landlordCode: code, updatedAt: serverTimestamp() });
-    return code;
-  }
-  throw { code: "already-exists", message: "Could not generate a landlord code. Please try again." };
+  // Use a transaction so two tabs/devices cannot create two different codes
+  // for the same landlord. The landlord code itself is also the document ID
+  // in landlordCodes/{code}, which gives us uniqueness at the database level.
+  return runTransaction(db, async (tx) => {
+    const profileSnap = await tx.get(profileRef);
+    if (!profileSnap.exists() || profileSnap.data().role !== "landlord") {
+      throw { code: "permission-denied", message: "Landlord profile not found." };
+    }
+
+    const existing = String(profileSnap.data().landlordCode || "").trim().toUpperCase();
+    if (existing) {
+      const existingCodeSnap = await tx.get(doc(db, "landlordCodes", existing));
+      if (existingCodeSnap.exists() && existingCodeSnap.data().landlordUid === landlordUid) {
+        return existing;
+      }
+      // Repair a profile whose code exists but whose index document was lost.
+      tx.set(doc(db, "landlordCodes", existing), {
+        landlordUid,
+        createdAt: existingCodeSnap.exists() ? (existingCodeSnap.data().createdAt || serverTimestamp()) : serverTimestamp()
+      }, { merge: true });
+      return existing;
+    }
+
+    for (let i = 0; i < 20; i++) {
+      const candidate = generateRoomCode();
+      const codeRef = doc(db, "landlordCodes", candidate);
+      const codeSnap = await tx.get(codeRef);
+      if (codeSnap.exists()) continue;
+
+      tx.set(codeRef, { landlordUid, createdAt: serverTimestamp() });
+      tx.update(profileRef, { landlordCode: candidate, updatedAt: serverTimestamp() });
+      return candidate;
+    }
+    throw { code: "already-exists", message: "Could not generate a unique Makan Malik code. Please try again." };
+  });
 }
 export async function getLandlordConnection(adminUid) {
   const snap = await getDoc(doc(db, "landlordConnections", adminUid));

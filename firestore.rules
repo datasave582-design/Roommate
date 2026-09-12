@@ -234,12 +234,15 @@ service cloud.firestore {
     // Landlord / property collections — scaffolded for Phase 2.
     // ---------------------------------------------------------------------
     match /properties/{propertyId} {
-      // Landlords own only documents whose ownerUid is their auth UID.
-      // The ownerUid check is also query-compatible for the My Buildings list.
+      // A building can ONLY be created by a signed-in landlord, and its
+      // ownerUid must exactly match the authenticated Firebase UID.
       allow create: if isSignedIn()
-        && request.resource.data.ownerUid == request.auth.uid;
-      allow read, update: if isLandlordOwner(propertyId);
-      allow delete: if isLandlordOwner(propertyId);
+        && request.resource.data.ownerUid == request.auth.uid
+        && myProfile().role == "landlord";
+
+      // A landlord can access ONLY their own building documents.
+      // This also keeps landlord data separate from Room Admin/Roommate data.
+      allow read, update, delete: if isLandlordOwner(propertyId);
 
       match /floors/{floorId} {
         allow read, create, update: if isLandlordOwner(propertyId);

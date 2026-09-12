@@ -22,6 +22,7 @@
       <div class="field"><label>Room Code</label><input type="text" id="joinCode" placeholder="RM-XXXXX" style="text-transform:uppercase;" required></div>
       <button type="submit" id="joinBtn" class="btn btn-primary">Request to Join</button>
     </form>
+    <button type="button" id="joinLogoutBtn" class="btn-text" style="width:100%;margin-top:14px;">🚪 Logout</button>
   </div>
 </div>
 
@@ -30,6 +31,8 @@
     <div style="font-size:2.4rem;margin-bottom:10px;">⏳</div>
     <h2>Request Sent</h2>
     <p class="auth-sub">Waiting for your Room Admin to approve your request. This page will update automatically once approved.</p>
+    <button type="button" id="cancelRequestBtn" class="btn-text danger-text" style="width:100%;margin-top:16px;border:1px solid var(--border);border-radius:12px;padding:11px 14px;">✕ Cancel Request</button>
+    <button type="button" id="pendingLogoutBtn" class="btn-text" style="width:100%;margin-top:10px;border:1px solid var(--border);border-radius:12px;padding:11px 14px;">🚪 Logout</button>
   </div>
 </div>
 

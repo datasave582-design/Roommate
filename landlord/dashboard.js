@@ -1,7 +1,7 @@
 import { auth, db, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser } from "../js/auth.js";
 import {
-  collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc
+  collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc, setDoc
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import { ensureLandlordCode, listenLandlordRequests, approveLandlordRequest, rejectLandlordRequest, listenLandlordConnections, assignLandlordAdminBuilding, sendLandlordNotification } from "../js/room-data.js";
 
@@ -85,14 +85,17 @@ function propertyForm(){
 
       // Explicit ownerUid is required by the Firestore rule. The owner is
       // always taken from the authenticated Firebase user, never from input.
-      const ref=await addDoc(collection(db,"properties"),{
+      const propertyRef=doc(collection(db,"properties"));
+      const propertyData={
         ownerUid:auth.currentUser.uid,
         name,
         address,
         city,
         createdAt:serverTimestamp(),
         updatedAt:serverTimestamp()
-      });
+      };
+      await setDoc(propertyRef,propertyData);
+      const ref=propertyRef;
 
       // Immediately show the newly created building. This also makes the UI
       // responsive even if the subsequent list refresh is delayed.
@@ -111,10 +114,11 @@ function propertyForm(){
       console.error("Building creation failed:",e);
       const code=e?.code||"";
       let msg="Could not create building.";
-      if(code==="permission-denied") msg="Firebase Permission Denied — deploy firestore.rules, then logout/login once.";
+      if(code==="permission-denied") msg="Firebase permission denied. Publish the included firestore.rules for project roommate-b1018.";
       else if(code==="unauthenticated" || code==="auth/invalid-user") msg="Login session expired. Please login again.";
       else if(code==="failed-precondition") msg="Firestore is not ready. Check Firebase project/database setup.";
-      else if(e?.message) msg=(e.message.length>180 ? e.message.slice(0,180)+"…" : e.message);
+      else if(e?.message) msg=`Could not create building: ${e.message}`;
+      console.error("BUILDING_ERROR_CODE",code,"BUILDING_ERROR_MESSAGE",e?.message||e);
       toast(msg);
     }finally{
       if($("saveProperty")) {

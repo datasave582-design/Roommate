@@ -6,7 +6,7 @@ import {
 } from "../js/common.js";
 import {
   DEFAULT_CATEGORIES, createRoom, deleteRoom, getRoomById, listenRoom,
-  requestLandlordConnection, listenMyLandlordRequest, attachLandlordToRoom,
+  requestLandlordConnection, listenMyLandlordRequest, disconnectMyLandlord, attachLandlordToRoom,
   listenMembers, listenPendingRequests, approveJoinRequest, rejectJoinRequest, setMemberStatus,
   listenCategories, addCustomCategory,
   addExpense, updateExpense, archiveExpense, deleteExpense, listenExpenses,
@@ -61,7 +61,16 @@ requireAuth({
 function renderLandlordConnection(req, room) {
   const connected = currentProfile?.landlordConnectionStatus === "approved" && currentProfile?.landlordUid;
   if (connected) {
-    $("landlordConnectStatus").innerHTML = "✅ <b>Makan Malik approved.</b> You can create/manage the room.";
+    $("landlordConnectStatus").innerHTML = `✅ <b>Makan Malik approved.</b> You can create/manage the room.<br><button type="button" class="btn btn-danger" id="disconnectLandlordBtn" style="margin-top:10px;width:auto;padding:8px 12px">🗑️ Disconnect Makan Malik</button>`;
+    $("disconnectLandlordBtn").onclick = async () => {
+      if (!confirm("Disconnect this Makan Malik? Your Firebase account and room will NOT be deleted.")) return;
+      try {
+        await disconnectMyLandlord(currentUser.uid);
+        currentProfile = { ...currentProfile, landlordUid: null, landlordConnectionStatus: "disconnected" };
+        showToast("Makan Malik disconnected.");
+        location.reload();
+      } catch (err) { showToast(friendlyError(err)); }
+    };
     if (!room) $("createRoomSection").classList.remove("hidden");
     else $("createRoomSection").classList.add("hidden");
     return;

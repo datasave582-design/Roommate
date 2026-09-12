@@ -160,19 +160,24 @@ function adminManageForm(conn){
 }
 
 async function loadLandlordCode(){
-  $("landlordCode").textContent="Loading…";
+  const codeEl=$("landlordCode"), statusEl=$("codeStatus");
+  codeEl.textContent="Generating…";
+  statusEl.textContent="Checking your Makan Malik account…";
   try{
+    if(!me?.uid) throw {code:"auth/invalid-user",message:"Login session missing."};
+    if(profile?.role!=="landlord") throw {code:"permission-denied",message:"This account is not marked as Makan Malik (landlord)."};
     const code=await ensureLandlordCode(me.uid);
-    if(!code)throw {code:"not-found",message:"No code was returned by Firebase."};
-    $("landlordCode").textContent=code;
-    $("codeStatus").textContent="Active • Give this code to your Room Admin";
+    if(!/^RM-[A-Z0-9]{5}$/.test(String(code||""))) throw {code:"invalid-code",message:"Firebase returned an invalid connection code."};
+    codeEl.textContent=code;
+    statusEl.innerHTML="<b>Active.</b> Give this exact code to your Room Admin.";
   }catch(e){
-    console.error("Landlord code error",e);
-    $("landlordCode").textContent="ERROR";
-    $("codeStatus").textContent=`${e?.code||"firebase-error"} — tap Fix Code to retry`;
+    console.error("Makan Malik code generation failed",e);
+    codeEl.textContent="—";
+    statusEl.textContent=`${e?.code||"firebase-error"}: ${e?.message||"Could not generate code."}`;
     toast(errorText(e,"Makan Malik code could not be generated"));
   }
 }
+
 function copyLandlordCode(){
   const code=$("landlordCode").textContent.trim();
   if(!/^RM-[A-Z0-9]{5}$/.test(code))return toast("पहले Makan Malik code generate होने दें.");

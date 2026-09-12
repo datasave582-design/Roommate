@@ -44,8 +44,6 @@ export function friendlyError(err) {
     "auth/weak-password": "Password should be at least 6 characters.",
     "auth/too-many-requests": "Too many attempts. Please try again later.",
     "auth/network-request-failed": "Network error. Please check your connection.",
-    "auth/operation-not-allowed": "This account type is not available. Please select Room Admin, Makan Malik, or Roommate.",
-    "auth/admin-restricted-operation": "This action is currently restricted by the Firebase project settings.",
     "permission-denied": "You don't have permission to perform this action.",
     "not-found": "The requested item could not be found."
   };
@@ -90,6 +88,11 @@ export function escapeHtml(str) {
 }
 
 export function formatDate(ts) {
+  // serverTimestamp() fields read back as null for the brief moment before
+  // Firestore's local write is confirmed by the server — without this guard
+  // that showed up as "01 Jan 1970" (new Date(null) === epoch) right after
+  // actions like joining, settling up, or getting a notification.
+  if (!ts) return "Just now";
   const d = ts && ts.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
@@ -144,20 +147,4 @@ export function monthKey(date = new Date()) {
 export function monthLabel(key) {
   const [y, m] = key.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-}
-
-
-/**
- * Register the PWA service worker from the same app root. Safe to call on
- * every page; browsers reuse an existing registration.
- */
-export async function registerServiceWorker(rootPath) {
-  if (!("serviceWorker" in navigator)) return null;
-  try {
-    const swUrl = new URL("service-worker.js", rootPath).href;
-    return await navigator.serviceWorker.register(swUrl, { scope: rootPath });
-  } catch (err) {
-    console.warn("Service worker registration failed:", err);
-    return null;
-  }
 }

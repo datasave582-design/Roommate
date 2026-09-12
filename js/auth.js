@@ -1,13 +1,12 @@
 // auth.js — Firebase Authentication + users/{uid} profile handling
-import { auth, db, ROOT_PATH, authPersistenceReady } from "./firebase-config.js";
+import { auth, db, ROOT_PATH } from "./firebase-config.js";
 import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
-  sendPasswordResetEmail, onAuthStateChanged, updateProfile, deleteUser,
-  GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult
-} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+  sendPasswordResetEmail, onAuthStateChanged, updateProfile
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {
   doc, setDoc, getDoc, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 /**
  * Register a new user. `role` is written ONCE at account creation and is
@@ -16,90 +15,25 @@ import {
  * which profile gets created; it grants no privilege by itself.
  */
 export async function registerUser({ name, email, mobile, password, role }) {
-  if (!["roomAdmin", "landlord", "roommate"].includes(role)) {
-    throw { code: "auth/operation-not-allowed", message: "This account type is not available." };
-  }
-
   const cred = await createUserWithEmailAndPassword(auth, email, password);
-  try {
-    await updateProfile(cred.user, { displayName: name });
-    await setDoc(doc(db, "users", cred.user.uid), {
-      uid: cred.user.uid,
-      name,
-      email,
-      phone: mobile,
-      photoURL: "",
-      role,
-      status: "active",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-    return cred.user;
-  } catch (err) {
-    // Do not leave a Firebase Auth account behind when its profile could
-    // not be created. The user can retry registration cleanly.
-    try { await deleteUser(cred.user); } catch (_) {}
-    throw err;
-  }
-}
-
-export async function loginUser(email, password) {
-  await authPersistenceReady;
-  const cred = await signInWithEmailAndPassword(auth, email, password);
-  return cred.user;
-}
-
-export async function createGoogleProfile(user, role) {
-  if (!["roomAdmin", "landlord", "roommate"].includes(role)) {
-    throw { code: "auth/operation-not-allowed", message: "Please select a valid account type." };
-  }
-  await setDoc(doc(db, "users", user.uid), {
-    uid: user.uid,
-    name: user.displayName || "",
-    email: user.email || "",
-    phone: user.phoneNumber || "",
-    photoURL: user.photoURL || "",
-    role,
+  await updateProfile(cred.user, { displayName: name });
+  await setDoc(doc(db, "users", cred.user.uid), {
+    uid: cred.user.uid,
+    name,
+    email,
+    phone: mobile,
+    photoURL: "",
+    role,               // roomAdmin | landlord | roommate
     status: "active",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
-  return getUserProfile(user.uid);
+  return cred.user;
 }
 
-export async function loginWithGoogle(role) {
-  if (!["roomAdmin", "landlord", "roommate"].includes(role)) {
-    throw { code: "auth/operation-not-allowed", message: "Please select a login type first." };
-  }
-  await authPersistenceReady;
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
-  try {
-    const cred = await signInWithPopup(auth, provider);
-    return cred.user;
-  } catch (err) {
-    // Mobile browsers / embedded WebViews may block popups. Redirect is the
-    // reliable fallback; the selected role is kept until the redirect returns.
-    if (["auth/popup-blocked", "auth/popup-cancelled-by-user", "auth/operation-not-supported-in-this-environment"].includes(err.code)) {
-      localStorage.setItem("roommate.pendingGoogleRole", role);
-      await signInWithRedirect(auth, provider);
-      throw { code: "auth/popup-redirect", message: "Redirecting to Google…" };
-    }
-    throw err;
-  }
-}
-
-export async function finishGoogleRedirect() {
-  const result = await getRedirectResult(auth);
-  if (!result || !result.user) return null;
-  const role = localStorage.getItem("roommate.pendingGoogleRole");
-  localStorage.removeItem("roommate.pendingGoogleRole");
-  let profile = await getUserProfile(result.user.uid);
-  if (!profile) {
-    if (!role) return result.user;
-    await createGoogleProfile(result.user, role);
-  }
-  return result.user;
+export async function loginUser(email, password) {
+  const cred = await signInWithEmailAndPassword(auth, email, password);
+  return cred.user;
 }
 
 export async function logoutUser() {

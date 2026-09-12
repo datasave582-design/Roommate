@@ -247,42 +247,75 @@ export async function ensureLandlordCode(landlordUid) {
   if (!landlordUid) throw { code: "auth/invalid-user", message: "Please log in again." };
 
   const profileRef = doc(db, "users", landlordUid);
-  // Use a transaction so two tabs/devices cannot create two different codes
-  // for the same landlord. The landlord code itself is also the document ID
-  // in landlordCodes/{code}, which gives us uniqueness at the database level.
-  return runTransaction(db, async (tx) => {
-    const profileSnap = await tx.get(profileRef);
-    if (!profileSnap.exists() || profileSnap.data().role !== "landlord") {
-      throw { code: "permission-denied", message: "Landlord profile not found." };
-    }
+  const profileSnap = await getDoc(profileRef);
+  if (!profileSnap.exists() || profileSnap.data().role !== "landlord") {
+    throw { code: "permission-denied", message: "Landlord profile not found." };
+  }
 
-    const existing = String(profileSnap.data().landlordCode || "").trim().toUpperCase();
-    if (existing) {
-      const existingCodeSnap = await tx.get(doc(db, "landlordCodes", existing));
-      if (existingCodeSnap.exists() && existingCodeSnap.data().landlordUid === landlordUid) {
-        return existing;
-      }
-      // Repair a profile whose code exists but whose index document was lost.
-      tx.set(doc(db, "landlordCodes", existing), {
+  const existingProfileCode = String(profileSnap.data().landlordCode || "").trim().toUpperCase();
+  if (existingProfileCode) {
+    const existingRef = doc(db, "landlordCodes", existingProfileCode);
+    const existingCodeSnap = await getDoc(existingRef);
+    if (!existingCodeSnap.exists()) {
+      // Repair old accounts where the profile has a code but the lookup index
+      // was never created. Creating this document is all the Admin needs.
+      await setDoc(existingRef, {
         landlordUid,
-        createdAt: existingCodeSnap.exists() ? (existingCodeSnap.data().createdAt || serverTimestamp()) : serverTimestamp()
-      }, { merge: true });
-      return existing;
+        createdAt: serverTimestamp()
+      });
+    } else if (existingCodeSnap.data().landlordUid !== landlordUid) {
+      throw { code: "already-exists", message: "This landlord code is already assigned to another account." };
     }
+    return existingProfileCode;
+  }
 
-    for (let i = 0; i < 20; i++) {
-      const candidate = generateRoomCode();
-      const codeRef = doc(db, "landlordCodes", candidate);
-      const codeSnap = await tx.get(codeRef);
-      if (codeSnap.exists()) continue;
+  // First look for a code already created by another tab/device. This avoids
+  // generating a new code every time the dashboard is opened.
+  const existingQuery = query(
+    collection(db, "landlordCodes"),
+    where("landlordUid", "==", landlordUid),
+    limit(1)
+  );
+  const existingQuerySnap = await getDocs(existingQuery);
+  if (!existingQuerySnap.empty) {
+    const code = existingQuerySnap.docs[0].id;
+    // Keep the profile field in sync, but do not make the dashboard depend on
+    // this optional profile update succeeding.
+    try {
+      await updateDoc(profileRef, { landlordCode: code, updatedAt: serverTimestamp() });
+    } catch (e) {
+      console.warn("Could not sync landlordCode to profile; index code is still valid.", e);
+    }
+    return code;
+  }
 
-      tx.set(codeRef, { landlordUid, createdAt: serverTimestamp() });
-      tx.update(profileRef, { landlordCode: candidate, updatedAt: serverTimestamp() });
+  // Generate the code and create the lookup index atomically. The code index
+  // is the source of truth for Room Admin connection requests.
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const candidate = generateRoomCode();
+    const codeRef = doc(db, "landlordCodes", candidate);
+    try {
+      await runTransaction(db, async (tx) => {
+        const codeSnap = await tx.get(codeRef);
+        if (codeSnap.exists()) throw { code: "code-collision" };
+        tx.set(codeRef, { landlordUid, createdAt: serverTimestamp() });
+      });
+
+      try {
+        await updateDoc(profileRef, { landlordCode: candidate, updatedAt: serverTimestamp() });
+      } catch (e) {
+        console.warn("Could not sync landlordCode to profile; index code is still valid.", e);
+      }
       return candidate;
+    } catch (e) {
+      if (e?.code === "code-collision") continue;
+      throw e;
     }
-    throw { code: "already-exists", message: "Could not generate a unique Makan Malik code. Please try again." };
-  });
+  }
+
+  throw { code: "already-exists", message: "Could not generate a unique Makan Malik code. Please try again." };
 }
+
 export async function getLandlordConnection(adminUid) {
   const snap = await getDoc(doc(db, "landlordConnections", adminUid));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;

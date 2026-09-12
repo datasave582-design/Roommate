@@ -1,18 +1,16 @@
 import { auth, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser, getUserProfile } from "../js/auth.js";
-import { formatMoney, showToast, friendlyError, withLoading, escapeHtml, formatDate, monthKey, monthLabel, registerServiceWorker } from "../js/common.js";
+import { formatMoney, showToast, friendlyError, withLoading, escapeHtml, formatDate, monthKey, monthLabel } from "../js/common.js";
 import {
-  requestJoinRoom, cancelJoinRequest, listenRoom, listenMembers, listenExpenses, listenPayments,
-  computeBalances, listenSettlements, listenMyNotifications, markNotificationRead, markAllNotificationsRead
+  requestJoinRoom, listenRoom, listenMembers, listenExpenses, listenPayments,
+  computeBalances, listenMyNotifications, markNotificationRead, markAllNotificationsRead
 } from "../js/room-data.js";
-import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { onSnapshot, doc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import { db } from "../js/firebase-config.js";
-import { collection, query, where, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { collection, query, where, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
-registerServiceWorker(new URL("../", import.meta.url).href);
-let currentUser = null, myProfile = null, roomId = null, members = [], expenses = [], payments = [], settlements = [];
-let pendingRequestId = null;
+let currentUser = null, myProfile = null, roomId = null, members = [], expenses = [], payments = [];
 let selectedMonth = monthKey();
 
 requireAuth({
@@ -36,11 +34,9 @@ function watchForPendingOrApproval() {
   const q = query(collection(db, "joinRequests"), where("uid", "==", currentUser.uid), where("status", "==", "pending"));
   onSnap2(q, (snap) => {
     if (!snap.empty) {
-      pendingRequestId = snap.docs[0].id;
       $("joinOverlay").classList.add("hidden");
       $("pendingOverlay").classList.remove("hidden");
     } else {
-      pendingRequestId = null;
       $("pendingOverlay").classList.add("hidden");
       $("joinOverlay").classList.remove("hidden");
     }
@@ -87,7 +83,6 @@ function bootRoom(id) {
   });
   listenMembers(roomId, (m) => { members = m; recomputeAndRender(); });
   listenMyNotifications(currentUser.uid, renderNotifications);
-  listenSettlements(roomId, (list) => { settlements = list; recomputeAndRender(); });
   subscribeMonth(selectedMonth);
 }
 
@@ -113,7 +108,7 @@ function populateMonthSelect() {
 function recomputeAndRender() {
   if (!members.length) return;
   const active = members.filter(m => m.status === "active");
-  const balances = computeBalances(active, expenses, payments, settlements);
+  const balances = computeBalances(active, expenses, payments);
   const mine = balances.find(b => b.uid === currentUser.uid) || { share: 0, paid: 0, balance: 0 };
   const totalExpenses = expenses.filter(e => !e.archived).reduce((s, e) => s + e.amountPaise, 0);
   const totalPaid = payments.reduce((s, p) => s + p.amountPaise, 0);
@@ -176,29 +171,4 @@ document.querySelectorAll(".nav-item").forEach(item => {
     $("tab-" + item.dataset.tab).classList.remove("hidden");
   });
 });
-async function handleRoommateLogout() {
-  try { await logoutUser(); } finally { window.location.href = ROOT_PATH + "index.html"; }
-}
-
-$("cancelRequestBtn").addEventListener("click", async () => {
-  if (!pendingRequestId || !currentUser) return;
-  if (!confirm("Cancel your join request?")) return;
-  const btn = $("cancelRequestBtn");
-  btn.disabled = true;
-  try {
-    await cancelJoinRequest(pendingRequestId, currentUser.uid);
-    pendingRequestId = null;
-    showToast("Join request cancelled.");
-    $("pendingOverlay").classList.add("hidden");
-    $("joinOverlay").classList.remove("hidden");
-    $("joinCode").value = "";
-  } catch (err) {
-    showToast(err.message || friendlyError(err), "error");
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-$("logoutBtn").addEventListener("click", handleRoommateLogout);
-$("joinLogoutBtn").addEventListener("click", handleRoommateLogout);
-$("pendingLogoutBtn").addEventListener("click", handleRoommateLogout);
+$("logoutBtn").addEventListener("click", async () => { await logoutUser(); window.location.href = ROOT_PATH + "index.html"; });

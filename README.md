@@ -104,3 +104,13 @@ The package is statically validated, but production Firebase behavior still requ
 - Added Firestore rules for safe connection deletion + profile cleanup.
 - Added safer landlordCodes create authorization based on authenticated UID ownership.
 - Building Edit/Delete remains available; deleting a building unassigns connected Admins first.
+
+
+## V9 verification checklist
+- Makan Malik dashboard now shows a real connection-code state (`Generating…`, code, or exact Firebase error).
+- Refresh button re-runs code generation and reloads buildings.
+- Every building has Edit and Delete controls.
+- Connected Admins have Manage, assignment, notification, and Disconnect controls.
+- Admin connection flow: Room Admin enters RM-XXXXX -> request -> Makan Malik approves -> assign building.
+- Disconnect removes only the relationship; it does not delete the Firebase account.
+- Publish this version's firestore.rules before testing. Deploy the web files too; Rules alone cannot change an already-hosted old UI.

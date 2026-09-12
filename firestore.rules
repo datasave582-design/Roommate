@@ -148,9 +148,16 @@ service cloud.firestore {
     // rooms/{roomId}
     // ---------------------------------------------------------------------
     match /rooms/{roomId} {
+      // FIX (v10): landlordUid must be OPTIONAL at create time, same as it
+      // already is on update below. The old rule forced every new room to
+      // already have an approved landlord connection, which made plain
+      // room creation (no landlord) permission-denied for every admin.
       allow create: if isSignedIn() && request.resource.data.adminUid == request.auth.uid
-        && request.resource.data.get("landlordUid", null) is string
-        && isApprovedConnection(request.auth.uid, request.resource.data.get("landlordUid", null));
+        && (
+          request.resource.data.get("landlordUid", null) == null
+          || (request.resource.data.get("landlordUid", null) is string
+              && isApprovedConnection(request.auth.uid, request.resource.data.get("landlordUid", null)))
+        );
       // Landlord never reads room documents: room/admin/roommate data stays private.
       allow read: if isActiveRoomMember(roomId);
       allow update: if (
@@ -316,13 +323,29 @@ service cloud.firestore {
         && request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null)
         && request.resource.data.status == "approved"
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["buildingId", "updatedAt"]);
+      // FIX (v10): the users/{uid} update rule lets EITHER the admin
+      // (isSelf(uid)) or the landlord trigger a disconnect, and requires
+      // !existsAfter(landlordConnections/{uid}) in that same write — but
+      // this delete rule only trusted the landlord's auth, so an admin-
+      // initiated disconnect always failed. Admin may now delete their own.
       allow delete: if isSignedIn()
-        && resource.data.landlordUid == request.auth.uid
-        && resource.data.status == "approved";
+        && (
+          (resource.data.landlordUid == request.auth.uid && resource.data.status == "approved")
+          || isSelf(adminUid)
+        );
     }
 
-    match /propertyRequests/{requestId} {
+    // FIX (v10): document ID is now the requesting Room Admin's uid, not a
+    // random requestId. The landlordConnections/{adminUid} create rule below
+    // does getAfter(propertyRequests/$(adminUid)) — with the old random-ID
+    // scheme that path never existed, so every "approve connection" write
+    // was permission-denied. One pending property request per admin, same
+    // pattern as landlordConnections/{adminUid}. NOTE: client code that
+    // creates this doc must use setDoc(doc(db,'propertyRequests', adminUid))
+    // instead of addDoc(...).
+    match /propertyRequests/{adminUid} {
       allow create: if isSignedIn()
+        && adminUid == request.auth.uid
         && request.resource.data.requestedBy == request.auth.uid
         && request.resource.data.requestType == "roomAdminConnection"
         && request.resource.data.status == "pending"

@@ -83,3 +83,16 @@ roommate/dashboard.html+js  Roommate app
 - Building list rules now explicitly support `get` and `list` using `ownerUid`, so the landlord's `where("ownerUid", "==", uid)` query is authorized.
 - Dashboard errors now expose the Firebase error code/message instead of only a generic failure toast.
 - Re-validated every JavaScript file with `node --check` and all JSON config files with a JSON parser.
+
+## V6 landlord dashboard fixes
+- Makan Malik code generation was hardened with recovery + transaction/direct-create fallback and a visible **Fix** button.
+- Added **Copy Code** and active code status.
+- Added building **Manage / Edit / Delete** controls. Deleting a building first unassigns connected Room Admins.
+- Added Pending Requests count and improved Admin approval/assignment UI.
+- Added Profile popup with Logout.
+- Added explicit Firestore composite indexes for `propertyRequests(landlordUid,status)` and `landlordConnections(landlordUid,status)` so landlord request/connection listeners do not silently fail.
+- Added listener error handling so Firebase errors are shown instead of leaving empty sections.
+- Static validation: all JavaScript files pass `node --check`; Firestore indexes JSON parses successfully.
+
+### Important
+The package is statically validated, but production Firebase behavior still requires publishing `firestore.rules` and `firestore.indexes.json` to project `roommate-b1018`. Firebase rules/indexes are enforced by Firebase after deployment; this environment cannot publish to the user's Firebase project.

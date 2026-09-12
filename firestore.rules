@@ -362,8 +362,18 @@ service cloud.firestore {
         && request.resource.data.get("landlordUid", null) is string
         && request.resource.data.get("connectionCode", null) is string
         && get(/databases/$(database)/documents/landlordCodes/$(request.resource.data.connectionCode)).data.landlordUid == request.resource.data.get("landlordUid", null);
+      // FIX (v12): requestLandlordConnection() does getDoc(ref) BEFORE the
+      // doc exists (to check for an old pending request) — same for the
+      // listenMyLandlordRequest() listener on dashboard load. With the old
+      // rule, resource is null on a nonexistent doc, so
+      // "resource.data.requestedBy" itself throws and Firestore denies the
+      // read — permission-denied on the very FIRST request, every time.
+      // adminUid (the doc's own path segment == the requester) is checked
+      // first since it never touches resource, so it short-circuits safely
+      // whether or not the document exists yet.
       allow read: if isSignedIn()
-        && (resource.data.requestedBy == request.auth.uid || resource.data.landlordUid == request.auth.uid);
+        && (adminUid == request.auth.uid
+            || (resource != null && resource.data.get("landlordUid", null) == request.auth.uid));
       allow update: if isSignedIn() && (
         (resource.data.landlordUid == request.auth.uid
           && request.resource.data.requestedBy == resource.data.requestedBy

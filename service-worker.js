@@ -2,7 +2,7 @@
 // Firestore's own offline-capable SDK (see firebase-config.js persistentLocalCache);
 // this worker never intercepts Firestore/Auth network calls, so a write only
 // ever reports success once Firebase has actually confirmed it (spec §59).
-const CACHE_NAME = "roommate-shell-v1";
+const CACHE_NAME = "roommate-shell-v6";
 // Relative (no leading "/") so these resolve against this file's own location —
 // works whether the site is deployed at a domain root or under a sub-path
 // (e.g. GitHub Project Pages: username.github.io/repo-name/).
@@ -17,6 +17,8 @@ const SHELL_FILES = [
   "admin/dashboard.js",
   "roommate/dashboard.html",
   "roommate/dashboard.js",
+  "landlord/dashboard.html",
+  "landlord/dashboard.js",
   "manifest.json",
   "icon-192.png",
   "icon-512.png"
@@ -34,6 +36,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   // Never cache/intercept Firebase or Google API calls — those must always hit the network
   // so the app can show a real offline state instead of stale/fake data.

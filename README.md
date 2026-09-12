@@ -1,10 +1,12 @@
-# The Roommate — Phase 1 (Room Admin + Roommate)
+# The Roommate — Room Admin + Makan Malik + Roommate
 
 "Room ka poora hisaab, sabke saamne clear."
 
 ## What's built in this phase
-- Landing page with 3-role selection (Room Admin / Makan Malik / Roommate)
+- Landing page with 3 active roles (Room Admin / Makan Malik / Roommate)
 - Email/password auth: register, login, logout, forgot password
+- Google/Gmail login with browser-local persistence and Android redirect fallback
+- Returning users are automatically routed to their correct dashboard
 - **Room Admin**: create room (unique room code), approve/reject join requests,
   add/archive expenses (equal or custom split, shared or personal), record
   payments, live balance dashboard, auto-suggested settlements, notifications,
@@ -14,11 +16,11 @@
 - Money handled in integer paise everywhere (no floating-point drift)
 - Firestore Security Rules are the real authorization layer — role, adminUid,
   and ownerUid can never be changed from the browser
-- PWA shell (manifest + service worker) with install prompt and offline app-shell caching
+- PWA shell (manifest + service worker) with offline app-shell caching; browser install UI appears when supported
 
-**Not yet built (Phase 2):** Landlord/Makan Malik portal (properties, rooms,
-tenants, rent, notices), CSV/print reports, FCM push notifications, room-code
-regeneration, expense editing (archive works; edit doesn't yet).
+- **Makan Malik:** create/manage properties and rooms, rent, due date, vacancy/occupancy, tenant contact, rent-payment records, and dashboard statistics.
+
+Still optional/future: CSV/print reports, FCM push notifications, room-code regeneration.
 
 ## Deploy steps
 
@@ -54,3 +56,12 @@ js/room-data.js          all room/expense/payment/balance/settlement logic
 admin/dashboard.html+js  Room Admin app
 roommate/dashboard.html+js  Roommate app
 ```
+
+## Makan Malik ↔ Room Admin connection (latest)
+1. Makan Malik dashboard shows a unique **Room Admin Connection Code**.
+2. Room Admin enters that code and sends an approval request.
+3. Makan Malik sees **Room Admin Approval Requests** and can Approve/Reject.
+4. After approval, the Room Admin profile is linked to that Makan Malik.
+5. Room Admin can create the room only after Makan Malik approval; the room stores `landlordUid` so all three roles are connected.
+6. Makan Malik can see connected rooms and manage monthly rent, due date, tenant details, room status, and record rent payments.
+7. Deploy the included `firestore.rules` to Firebase before testing this workflow.

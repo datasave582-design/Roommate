@@ -41,6 +41,21 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid))
         && get(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid)).data.status == "active";
     }
+    function isRoomAdminAfter(roomId) {
+      return isSignedIn()
+        && getAfter(/databases/$(database)/documents/rooms/$(roomId)).data.adminUid == request.auth.uid;
+    }
+    function isLandlordForRoom(roomId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && get(/databases/$(database)/documents/rooms/$(roomId)).data.get("landlordUid", null) == request.auth.uid;
+    }
+    function isApprovedConnection(adminUid, landlordUid) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/landlordConnections/$(adminUid))
+        && get(/databases/$(database)/documents/landlordConnections/$(adminUid)).data.status == "approved"
+        && get(/databases/$(database)/documents/landlordConnections/$(adminUid)).data.landlordUid == landlordUid;
+    }
     function isLandlordOwner(propertyId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/properties/$(propertyId))
@@ -60,14 +75,9 @@ service cloud.firestore {
         && request.resource.data.uid == uid
         && request.resource.data.role in ["roomAdmin", "landlord", "roommate"];
 
-      // NOTE: a brand-new user (or a pending join-requester) has no roomId
-      // field on their profile at all yet — not null, genuinely absent. Direct
-      // field access (resource.data.roomId) throws "Property roomId is
-      // undefined on object" in that case, which denies the whole rule. Using
-      // Map.get() with a default avoids that and just falls through cleanly.
-      allow read: if isSelf(uid)
-        || (resource.data.get('roomId', null) != null
-            && exists(/databases/$(database)/documents/rooms/$(resource.data.get('roomId', null))/members/$(request.auth.uid)));
+      // A landlord can read only their own profile. Room Admin/Roommate profiles
+      // are private from the landlord.
+      allow read: if isSelf(uid);
 
       // Two ways a user doc can be updated, both frontend-blocked from
       // touching role/uid:
@@ -75,13 +85,33 @@ service cloud.firestore {
       //  2. The admin of the room named in the incoming write stamps
       //     `roomId` onto a member's profile right after approving them.
       allow update: if roleUnchanged() && request.resource.data.uid == resource.data.uid
-        && (isSelf(uid) || isRoomAdmin(request.resource.data.roomId));
+        && (
+          (isSelf(uid) && (
+            (request.resource.data.roomId == resource.data.roomId
+              && request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null))
+            || (resource.data.role == "roomAdmin" && request.resource.data.roomId == null && isRoomAdmin(resource.data.roomId))
+          ))
+          || isRoomAdmin(request.resource.data.roomId)
+          || isRoomAdminAfter(request.resource.data.roomId)
+          || (isSignedIn() && resource.data.roomId != null && request.resource.data.roomId == null && isRoomAdmin(resource.data.roomId))
+          || (isSignedIn()
+            && request.resource.data.get("landlordUid", null) == request.auth.uid
+            && request.resource.data.landlordConnectionStatus == "approved"
+            && getAfter(/databases/$(database)/documents/landlordConnections/$(uid)).data.status == "approved"
+            && getAfter(/databases/$(database)/documents/landlordConnections/$(uid)).data.landlordUid == request.auth.uid)
+        );
 
       allow delete: if false;
 
       match /notifications/{notifId} {
         allow read, update: if isSelf(uid);
-        allow create: if isSignedIn(); // server-side trigger or peer action creates a notification for another user
+        allow create: if isSignedIn() && (
+          (request.resource.data.roomId != null && isRoomAdmin(request.resource.data.roomId))
+          || (request.resource.data.roomId == null && isSelf(uid))
+          || (request.resource.data.roomId == null && exists(/databases/$(database)/documents/landlordConnections/$(uid))
+            && get(/databases/$(database)/documents/landlordConnections/$(uid)).data.landlordUid == request.auth.uid
+            && get(/databases/$(database)/documents/landlordConnections/$(uid)).data.status == "approved")
+        );
         allow delete: if false;
       }
     }
@@ -93,58 +123,78 @@ service cloud.firestore {
     match /roomCodes/{code} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if isSignedIn()
+        && resource.data.roomId is string
+        && isRoomAdmin(resource.data.roomId);
     }
 
     // ---------------------------------------------------------------------
     // rooms/{roomId}
     // ---------------------------------------------------------------------
     match /rooms/{roomId} {
-      allow create: if isSignedIn() && request.resource.data.adminUid == request.auth.uid;
-      // Active-only: a removed roommate (status flipped to "inactive" by
-      // setMemberStatus) must actually lose access here, not just cosmetically
-      // in the UI — isRoomMember() alone would still return true for them
-      // since their member record still exists, just deactivated.
+      allow create: if isSignedIn() && request.resource.data.adminUid == request.auth.uid
+        && request.resource.data.get("landlordUid", null) is string
+        && isApprovedConnection(request.auth.uid, request.resource.data.get("landlordUid", null));
+      // Landlord never reads room documents: room/admin/roommate data stays private.
       allow read: if isActiveRoomMember(roomId);
-      allow update: if isRoomAdmin(roomId)
+      allow update: if (
+        isRoomAdmin(roomId)
         && request.resource.data.adminUid == resource.data.adminUid
-        && request.resource.data.roomId == resource.data.roomId;
-      allow delete: if false;
+        && request.resource.data.roomId == resource.data.roomId
+        && (
+          request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null)
+          || (request.resource.data.get("landlordUid", null) is string && isApprovedConnection(request.auth.uid, request.resource.data.get("landlordUid", null)))
+        )
+      );
+      allow delete: if isRoomAdmin(roomId);
 
       match /members/{memberUid} {
         allow read: if isActiveRoomMember(roomId);
-        allow create, update: if isRoomAdmin(roomId);
-        allow delete: if false; // deactivate via status field — never destroy financial history
+        allow create: if (isRoomAdmin(roomId) || isRoomAdminAfter(roomId))
+          && request.resource.data.uid == memberUid
+          && request.resource.data.role in ["admin", "roommate"]
+          && request.resource.data.status in ["active", "inactive"];
+        allow update: if isRoomAdmin(roomId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.status in ["active", "inactive"];
+        allow delete: if isRoomAdmin(roomId); // deleting the entire room removes member records
+      }
+
+      match /rentPayments/{paymentId} {
+        allow read, create: if isActiveRoomMember(roomId) || isLandlordForRoom(roomId);
+        allow update, delete: if isRoomAdmin(roomId);
       }
 
       match /categories/{categoryId} {
         allow read: if isActiveRoomMember(roomId);
         allow create: if isRoomAdmin(roomId);
-        allow update, delete: if false;
+        allow update, delete: if isRoomAdmin(roomId);
       }
 
       match /expenses/{expenseId} {
         allow read: if isActiveRoomMember(roomId);
         allow create, update: if isRoomAdmin(roomId); // roommates are read-only, per spec §21
-        allow delete: if false; // archive-only, never hard-delete financial records
+        allow delete: if isRoomAdmin(roomId); // Room Admin can remove an expense
       }
 
       match /payments/{paymentId} {
         allow read: if isActiveRoomMember(roomId);
         allow create: if isRoomAdmin(roomId);
-        allow update, delete: if false;
+        allow update, delete: if isRoomAdmin(roomId);
       }
 
       match /settlements/{settlementId} {
         allow read: if isActiveRoomMember(roomId);
         allow create: if isRoomAdmin(roomId);
-        allow update, delete: if false;
+        allow update, delete: if isRoomAdmin(roomId);
       }
 
       match /notifications/{notifId} {
         allow read: if isActiveRoomMember(roomId);
         allow create: if isRoomAdmin(roomId);
-        allow update, delete: if false;
+        allow update, delete: if isRoomAdmin(roomId);
       }
     }
 
@@ -152,14 +202,23 @@ service cloud.firestore {
     // joinRequests/{requestId}
     // ---------------------------------------------------------------------
     match /joinRequests/{requestId} {
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.status == "pending";
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == "pending"
+        && request.resource.data.roomId is string
+        && request.resource.data.applicant is map;
       allow read: if isSignedIn()
         && (resource.data.uid == request.auth.uid || isRoomAdmin(resource.data.roomId));
       allow update: if isRoomAdmin(resource.data.roomId)
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.roomId == resource.data.roomId
         && request.resource.data.status in ["approved", "rejected"];
-      allow delete: if false;
+      // A roommate may cancel only their own still-pending request.
+      // Admin-resolved requests cannot be deleted by the applicant.
+      allow delete: if (isSignedIn()
+        && resource.data.uid == request.auth.uid
+        && resource.data.status == "pending")
+        || (isSignedIn() && isRoomAdmin(resource.data.roomId));
     }
 
     // ---------------------------------------------------------------------
@@ -202,11 +261,54 @@ service cloud.firestore {
       }
     }
 
-    match /propertyRequests/{requestId} {
-      allow create: if isSignedIn();
-      allow read, update: if isSignedIn()
-        && (resource.data.requestedBy == request.auth.uid || isLandlordOwner(resource.data.propertyId));
+    match /landlordCodes/{code} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.get("landlordUid", null) == request.auth.uid
+        && myProfile().role == "landlord";
+      allow update, delete: if false;
+    }
+
+    match /landlordConnections/{adminUid} {
+      allow read: if isSelf(adminUid) || (isSignedIn() && resource.data.landlordUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.adminUid == adminUid
+        && request.resource.data.get("landlordUid", null) == request.auth.uid
+        && request.resource.data.status == "approved"
+        && getAfter(/databases/$(database)/documents/propertyRequests/$(adminUid)).data.status == "approved"
+        && getAfter(/databases/$(database)/documents/propertyRequests/$(adminUid)).data.landlordUid == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.landlordUid == request.auth.uid
+        && request.resource.data.adminUid == resource.data.adminUid
+        && request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null)
+        && request.resource.data.status == "approved"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["buildingId", "updatedAt"]);
       allow delete: if false;
+    }
+
+    match /propertyRequests/{requestId} {
+      allow create: if isSignedIn()
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.requestType == "roomAdminConnection"
+        && request.resource.data.status == "pending"
+        && request.resource.data.get("landlordUid", null) is string
+        && request.resource.data.connectionCode is string
+        && get(/databases/$(database)/documents/landlordCodes/$(request.resource.data.connectionCode)).data.landlordUid == request.resource.data.get("landlordUid", null);
+      allow read: if isSignedIn()
+        && (resource.data.requestedBy == request.auth.uid || resource.data.landlordUid == request.auth.uid);
+      allow update: if isSignedIn() && (
+        (resource.data.landlordUid == request.auth.uid
+          && request.resource.data.requestedBy == resource.data.requestedBy
+          && request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null)
+          && request.resource.data.status in ["approved", "rejected"])
+        || (resource.data.requestedBy == request.auth.uid
+          && resource.data.status == "rejected"
+          && request.resource.data.requestedBy == resource.data.requestedBy
+          && request.resource.data.get("landlordUid", null) == resource.data.get("landlordUid", null)
+          && request.resource.data.status == "pending")
+      );
+      allow delete: if isSignedIn()
+        && resource.data.requestedBy == request.auth.uid
+        && resource.data.status == "pending";
     }
 
     // Default deny for anything not explicitly matched above.

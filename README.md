@@ -22,6 +22,17 @@
 
 Still optional/future: CSV/print reports, FCM push notifications, room-code regeneration.
 
+
+## Critical landlord/building fix
+The landlord connection flow requires the `landlordCodes/{code}` Firestore rule. The previous build could show `—` for the Makan Malik code and `Could not create building` when the deployed Firebase rules did not contain the matching landlord permissions. This package now includes the missing code-index rules, transaction-safe code creation, landlord-role checks, and a Copy button for the code.
+
+After replacing the deployed files, publish the rules **before testing**:
+```
+firebase use roommate-b1018
+firebase deploy --only firestore:rules,firestore:indexes,hosting
+```
+Then sign out/in once on the Makan Malik account and refresh. The dashboard should show a non-empty Makan Malik code. Enter that exact code in the Room Admin dashboard, send the request, approve it from Makan Malik, then assign the Admin to a building.
+
 ## Deploy steps
 
 1. **Install Firebase CLI** (if you haven't): `npm install -g firebase-tools`

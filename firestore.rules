@@ -234,11 +234,15 @@ service cloud.firestore {
     // Landlord / property collections — scaffolded for Phase 2.
     // ---------------------------------------------------------------------
     match /properties/{propertyId} {
-      // A landlord may create a property only for their own authenticated UID.
+      // Only a signed-in Makan Malik account can create a building/property.
+      // The owner UID is always the authenticated Firebase UID.
       allow create: if isSignedIn()
-        && request.auth.token.email != null
-        && request.resource.data.ownerUid == request.auth.uid;
-      allow read, update, delete: if isLandlordOwner(propertyId);
+        && myProfile().role == "landlord"
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+      allow read, update, delete: if isLandlordOwner(propertyId)
+        && myProfile().role == "landlord";
 
       match /floors/{floorId} {
         allow read, create, update: if isLandlordOwner(propertyId);
@@ -260,6 +264,21 @@ service cloud.firestore {
         allow read, create: if isLandlordOwner(propertyId);
         allow update, delete: if false;
       }
+    }
+
+    // ---------------------------------------------------------------------
+    // landlordCodes/{code} — public-to-authenticated lookup index. It never
+    // contains private landlord data; it only maps a short code to a landlord UID.
+    // ---------------------------------------------------------------------
+    match /landlordCodes/{code} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && myProfile().role == "landlord"
+        && request.resource.data.landlordUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if isSignedIn()
+        && myProfile().role == "landlord"
+        && resource.data.landlordUid == request.auth.uid;
     }
 
     match /landlordConnections/{adminUid} {

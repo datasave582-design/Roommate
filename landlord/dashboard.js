@@ -111,10 +111,10 @@ function propertyForm(){
       console.error("Building creation failed:",e);
       const code=e?.code||"";
       let msg="Could not create building.";
-      if(code==="permission-denied") msg="Permission denied. Please deploy the latest firestore.rules.";
+      if(code==="permission-denied") msg="Firebase Permission Denied — deploy firestore.rules, then logout/login once.";
       else if(code==="unauthenticated" || code==="auth/invalid-user") msg="Login session expired. Please login again.";
       else if(code==="failed-precondition") msg="Firestore is not ready. Check Firebase project/database setup.";
-      else if(e?.message) msg=e.message;
+      else if(e?.message) msg=(e.message.length>180 ? e.message.slice(0,180)+"…" : e.message);
       toast(msg);
     }finally{
       if($("saveProperty")) {

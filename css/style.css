@@ -145,3 +145,8 @@ img{max-width:100%;display:block;}
 @media(max-width:420px){.landing{padding-top:38px}.landing-logo{font-size:1.55rem}.landing-tag{margin-bottom:28px}.role-card{padding:18px}.auth-card{padding:26px 20px}}
 
 .danger-text{color:#c62828 !important;}
+
+/* V7 landlord dashboard enhancements */
+.landlord-code-card .code-display{font-size:2rem;font-weight:900;letter-spacing:5px;text-align:center;padding:14px 10px;margin-top:12px;border:2px dashed var(--primary,#0b78e3);border-radius:16px;background:#eef7ff;color:var(--primary,#0b78e3);min-height:32px}
+.building-card{transition:transform .18s ease,box-shadow .18s ease}.building-card:hover{transform:translateY(-2px)}
+@media(max-width:520px){.landlord-code-card .code-display{font-size:1.65rem;letter-spacing:3px}.building-card .row{align-items:flex-start}.building-card .person-name{font-size:1.08rem}}

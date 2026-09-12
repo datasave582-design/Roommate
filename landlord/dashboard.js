@@ -1,6 +1,8 @@
 import { auth, db, ROOT_PATH } from "../js/firebase-config.js";
 import { requireAuth, logoutUser } from "../js/auth.js";
-import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import {
+  collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 import { ensureLandlordCode, listenLandlordRequests, approveLandlordRequest, rejectLandlordRequest, listenLandlordConnections, assignLandlordAdminBuilding, sendLandlordNotification } from "../js/room-data.js";
 
 const $=id=>document.getElementById(id); let me=null, buildings=[], connections=[];
@@ -23,13 +25,15 @@ function renderRequests(reqs){
 }
 
 async function loadBuildings(){
+  if(!me?.uid) throw new Error("Landlord session not ready.");
   const q=query(collection(db,"properties"),where("ownerUid","==",me.uid));
-  const s=await getDocs(q);
-  buildings=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
+  const snap=await getDocs(q);
+  buildings=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>{
     const av=a.createdAt?.toMillis?.() ?? 0, bv=b.createdAt?.toMillis?.() ?? 0;
     return bv-av;
   });
-  renderBuildings(); renderConnections();
+  renderBuildings();
+  renderConnections();
 }
 function renderBuildings(){
   $("statBuildings").textContent=buildings.length;
@@ -59,7 +63,67 @@ function adminManageForm(conn){
   $("saveAdminBuilding").onclick=async()=>{try{await assignLandlordAdminBuilding(conn.id,me.uid,$("adminBuilding").value||null);closeModal();toast("Building assignment saved")}catch(e){console.error(e);toast("Could not save building")}};
   $("sendOneNotice").onclick=async()=>{try{const title=$("noticeTitle").value.trim(),message=$("noticeMessage").value.trim();if(!title||!message)return toast("Enter title and message");await sendLandlordNotification(me.uid,[conn.id],{title,message,type:"landlord"});closeModal();toast("Notification sent")}catch(e){console.error(e);toast("Could not send notification")}};
 }
-function propertyForm(){openModal("Add Building",`<div class="field"><label>Building Name</label><input id="fName" placeholder="Sharma Building" required></div><div class="field"><label>Address</label><input id="fAddress" placeholder="Building address"></div><div class="field"><label>City</label><input id="fCity" placeholder="Noida"></div><button id="saveProperty" class="btn btn-primary">Create Building</button>`);$("saveProperty").onclick=async()=>{try{const name=$("fName").value.trim();if(!name)return toast("Building name is required");await addDoc(collection(db,"properties"),{ownerUid:me.uid,name,address:$("fAddress").value.trim(),city:$("fCity").value.trim(),createdAt:serverTimestamp(),updatedAt:serverTimestamp()});closeModal();await loadBuildings();toast("Building created")}catch(e){console.error(e);toast("Could not create building")}}}
+function propertyForm(){
+  openModal("Add Building",`
+    <div class="field"><label>Building Name</label><input id="fName" placeholder="Sharma Building" autocomplete="organization" required></div>
+    <div class="field"><label>Address</label><input id="fAddress" placeholder="Building address" autocomplete="street-address"></div>
+    <div class="field"><label>City</label><input id="fCity" placeholder="Noida" autocomplete="address-level2"></div>
+    <button id="saveProperty" class="btn btn-primary">Create Building</button>
+  `);
+
+  $("saveProperty").onclick=async()=>{
+    const btn=$("saveProperty");
+    try{
+      if(!me?.uid || !auth.currentUser?.uid) throw {code:"auth/invalid-user",message:"Login session expired. Please login again."};
+      const name=$("fName").value.trim();
+      const address=$("fAddress").value.trim();
+      const city=$("fCity").value.trim();
+      if(!name) return toast("Building name is required");
+
+      btn.disabled=true;
+      btn.textContent="Creating…";
+
+      // Explicit ownerUid is required by the Firestore rule. The owner is
+      // always taken from the authenticated Firebase user, never from input.
+      const ref=await addDoc(collection(db,"properties"),{
+        ownerUid:auth.currentUser.uid,
+        name,
+        address,
+        city,
+        createdAt:serverTimestamp(),
+        updatedAt:serverTimestamp()
+      });
+
+      // Immediately show the newly created building. This also makes the UI
+      // responsive even if the subsequent list refresh is delayed.
+      buildings.unshift({
+        id:ref.id,
+        ownerUid:auth.currentUser.uid,
+        name,
+        address,
+        city,
+        createdAt:{toMillis:()=>Date.now()}
+      });
+      renderBuildings();
+      closeModal();
+      toast("✅ Building added successfully");
+    }catch(e){
+      console.error("Building creation failed:",e);
+      const code=e?.code||"";
+      let msg="Could not create building.";
+      if(code==="permission-denied") msg="Permission denied. Please deploy the latest firestore.rules.";
+      else if(code==="unauthenticated" || code==="auth/invalid-user") msg="Login session expired. Please login again.";
+      else if(code==="failed-precondition") msg="Firestore is not ready. Check Firebase project/database setup.";
+      else if(e?.message) msg=e.message;
+      toast(msg);
+    }finally{
+      if($("saveProperty")) {
+        $("saveProperty").disabled=false;
+        $("saveProperty").textContent="Create Building";
+      }
+    }
+  };
+}
 function broadcastForm(){
   if(!connections.length)return toast("No connected Room Admins.");
   const buildingOptions=buildings.map(b=>`<option value="${esc(b.id)}">${esc(b.name)} (${connections.filter(c=>c.buildingId===b.id).length} Admins)</option>`).join("");
@@ -81,4 +145,35 @@ $("homeNav").onclick=()=>{};
 $("noticeNav").onclick=broadcastForm;
 $("profileNav").onclick=()=>toast("Your landlord account is secure. Room Admin/Roommate private data is not visible here.");
 
-requireAuth({expectedRole:"landlord",onReady:async(user,profile)=>{me=user;$("welcome").textContent=profile.name||user.displayName||"Makan Malik";$("loader").classList.add("hidden");$("app").classList.remove("hidden");try{await loadConnections();await loadBuildings()}catch(e){console.error(e);toast("Could not load dashboard. Deploy the latest firestore.rules.")}}});
+requireAuth({
+  expectedRole:"landlord",
+  onReady:async(user,profile)=>{
+    me=user;
+    $("welcome").textContent=profile.name||user.displayName||"Makan Malik";
+    $("loader").classList.add("hidden");
+    $("app").classList.remove("hidden");
+
+    // Load the landlord code independently; a connection-listener failure
+    // must never prevent the Buildings section from rendering.
+    try{
+      const code=await ensureLandlordCode(me.uid);
+      $("landlordCode").textContent=code||"—";
+    }catch(e){
+      console.error("Landlord code load failed:",e);
+      $("landlordCode").textContent="—";
+    }
+
+    try{ await loadBuildings(); }
+    catch(e){
+      console.error("Building list load failed:",e);
+      $("buildingList").innerHTML=`<div class="empty-state"><div class="emoji">⚠️</div><h3>Buildings could not be loaded</h3><p>Deploy the latest Firestore rules, then refresh this page.</p></div>`;
+      toast("Could not load buildings. Check Firestore rules.");
+    }
+
+    try{ await loadConnections(); }
+    catch(e){
+      console.error("Connection load failed:",e);
+      toast("Building dashboard loaded. Connection data needs Firestore rules.");
+    }
+  }
+});

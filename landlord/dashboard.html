@@ -1,18 +1,34 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Makan Malik — The Roommate</title><link rel="manifest" href="../manifest.json"><link rel="stylesheet" href="../css/style.css"></head><body>
+<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0F2A47"><title>Makan Malik — The Roommate</title><link rel="manifest" href="../manifest.json"><link rel="stylesheet" href="../css/style.css"></head><body>
 <div id="loader" class="center-loader"><div class="dim-spinner"></div></div>
 <div id="app" class="app hidden">
 <header class="app-header"><div><div class="greet">Makan Malik</div><div class="room-name" id="welcome">Building Manager</div></div><button id="logoutBtn" class="icon-btn" title="Logout">↪</button></header>
 <main class="app-body">
 <section id="dashboardView">
-<div class="card" style="margin-bottom:16px;border:1px solid var(--border);"><div class="row"><div><div class="section-title" style="margin:0">🔗 Your Makan Malik Code</div><div class="person-meta" style="margin-top:4px">Room Admin uses this code to request connection. You approve each Admin.</div></div><div style="display:flex;align-items:center;gap:8px"><div id="landlordCode" class="pill pill-blue" style="font-size:1rem;letter-spacing:2px;min-width:92px;text-align:center">Loading…</div><button id="copyLandlordCode" class="btn btn-outline" style="width:auto;padding:8px 10px" title="Copy code">Copy</button></div></div></div>
-<div class="card" id="adminRequestsCard" style="margin-bottom:16px;display:none;border:1px solid var(--border);"><div class="section-title" style="margin:0 0 10px">🔔 Room Admin Approval Requests</div><div id="adminRequestsList"></div></div>
-<div class="stat-grid"><div class="stat-card"><div class="label">Buildings</div><div class="value" id="statBuildings">0</div></div><div class="stat-card"><div class="label">Connected Admins</div><div class="value" id="statAdmins">0</div></div></div>
-<div class="row" style="margin:18px 0 10px"><h3 class="section-title" style="margin:0">🏢 My Buildings</h3><button id="addBuildingBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">+ Building</button></div>
-<div id="buildingList"></div>
-<div class="row" style="margin:24px 0 10px"><h3 class="section-title" style="margin:0">👨‍💼 Connected Room Admins</h3><button id="broadcastBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">📢 Send Notice</button></div>
-<div class="person-meta" style="margin-bottom:10px">Room Admin और Roommate की private details यहाँ दिखाई नहीं देतीं। आप सिर्फ building assignment और notifications manage कर सकते हैं.</div>
-<div id="adminList"></div>
+  <section class="card" style="margin-bottom:16px;border:1px solid var(--border);background:linear-gradient(135deg,#fff,#f4f9ff)">
+    <div class="row" style="align-items:center;gap:12px">
+      <div style="flex:1;min-width:0"><div class="section-title" style="margin:0">🔗 Your Makan Malik Code</div><div class="person-meta" style="margin-top:5px">Room Admin इसी code से connection request भेजेगा. Approval आप करेंगे.</div></div>
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end"><div id="landlordCode" class="pill pill-blue" style="font-size:1rem;letter-spacing:2px;min-width:105px;text-align:center">Loading…</div><button id="copyLandlordCode" class="btn btn-outline" style="width:auto;padding:8px 10px">Copy</button><button id="fixCodeBtn" class="btn btn-text" style="width:auto;padding:8px 6px">Fix</button></div>
+    </div>
+    <div id="codeStatus" class="person-meta" style="margin-top:8px"></div>
+  </section>
+
+  <section id="adminRequestsCard" class="card" style="margin-bottom:16px;display:none;border:1px solid var(--border)"><div class="section-title" style="margin:0 0 10px">🔔 Room Admin Approval Requests</div><div id="adminRequestsList"></div></section>
+
+  <div class="stat-grid">
+    <div class="stat-card"><div class="label">🏢 Buildings</div><div class="value" id="statBuildings">0</div></div>
+    <div class="stat-card"><div class="label">👨‍💼 Connected Admins</div><div class="value" id="statAdmins">0</div></div>
+    <div class="stat-card"><div class="label">🔔 Pending Requests</div><div class="value" id="statRequests">0</div></div>
+  </div>
+
+  <div class="row" style="margin:20px 0 10px;gap:8px"><h3 class="section-title" style="margin:0">🏢 My Buildings</h3><button id="addBuildingBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">+ Building</button></div>
+  <div id="buildingList"></div>
+
+  <div class="row" style="margin:24px 0 10px;gap:8px"><h3 class="section-title" style="margin:0">👨‍💼 Connected Room Admins</h3><button id="broadcastBtn" class="btn btn-primary" style="width:auto;padding:9px 13px">📢 Send Notice</button></div>
+  <div class="person-meta" style="margin-bottom:10px">Room Admin और Roommate की private details यहाँ नहीं दिखाई जातीं. आप केवल building assignment और notifications manage करते हैं.</div>
+  <div id="adminList"></div>
 </section>
-</main><nav class="bottom-nav"><button class="nav-item active" id="homeNav"><span class="nav-icon">🏠</span>Home</button><button class="nav-item" id="noticeNav"><span class="nav-icon">📢</span>Notices</button><button class="nav-item" id="profileNav"><span class="nav-icon">👤</span>Profile</button></nav></div>
-<div id="modal" class="overlay center hidden"><div class="sheet"><div class="row"><div class="sheet-title" id="modalTitle">Add</div><button id="closeModal" class="icon-btn">×</button></div><div id="modalBody"></div></div></div>
+</main>
+<nav class="bottom-nav"><button class="nav-item active" id="homeNav"><span class="nav-icon">🏠</span>Home</button><button class="nav-item" id="noticeNav"><span class="nav-icon">📢</span>Notices</button><button class="nav-item" id="profileNav"><span class="nav-icon">👤</span>Profile</button></nav>
+</div>
+<div id="modal" class="overlay center hidden"><div class="sheet"><div class="row"><div class="sheet-title" id="modalTitle">Manage</div><button id="closeModal" class="icon-btn">×</button></div><div id="modalBody"></div></div></div>
 <div id="toast" class="toast hidden"></div><script type="module" src="dashboard.js"></script></body></html>
